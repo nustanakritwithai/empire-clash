@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Empire Clash — 3D FPS MVP</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:#1a1a2e; font-family: monospace; color:#eee; user-select:none; }
+canvas { display:block; }
+#hud { position:fixed; top:0; left:0; right:0; padding:8px 12px; pointer-events:none; z-index:10; display:flex; justify-content:space-between; }
+#hud .left, #hud .right { display:flex; flex-direction:column; gap:4px; }
+.bar { width:180px; height:14px; border:1px solid rgba(255,255,255,.3); border-radius:3px; background:rgba(0,0,0,.5); overflow:hidden; position:relative; }
+.bar > i { position:absolute; left:0; top:0; height:100%; transition:width .2s; }
+#hpBar > i { background:linear-gradient(#e0584a,#b3392c); }
+#goldBar > i { background:linear-gradient(#e0a23c,#b87b1e); }
+#xpBar > i { background:linear-gradient(#4fb3d9,#2c83a6); }
+.bar > span { position:absolute; left:6px; top:-1px; font-size:9px; line-height:14px; text-shadow:0 1px 1px #000; }
+#score { font-size:12px; opacity:.8; }
+#minimap { position:fixed; top:50px; right:10px; width:120px; height:120px; border:1px solid rgba(255,255,255,.3); border-radius:5px; background:rgba(0,0,0,.6); z-index:10; }
+#classSelect { position:fixed; inset:0; background:rgba(10,10,20,.95); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:50; gap:16px; }
+#classSelect h1 { font-size:24px; color:#e0a23c; letter-spacing:2px; }
+#classSelect p { font-size:11px; opacity:.6; max-width:400px; text-align:center; }
+.classGrid { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; max-width:600px; }
+.classCard { width:130px; padding:12px; border:1px solid rgba(255,255,255,.2); border-radius:8px; background:rgba(255,255,255,.05); cursor:pointer; text-align:center; transition:all .2s; }
+.classCard:hover { border-color:#e0a23c; background:rgba(224,162,60,.1); transform:translateY(-3px); }
+.classCard h3 { font-size:14px; color:#e0a23c; margin-bottom:4px; }
+.classCard small { font-size:9px; opacity:.6; display:block; margin-top:4px; }
+#nameInput { padding:8px 12px; font-size:14px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.3); border-radius:4px; color:#eee; font-family:monospace; }
+#crosshair { position:fixed; top:50%; left:50%; width:20px; height:20px; transform:translate(-50%,-50%); pointer-events:none; z-index:10; }
+#crosshair::before, #crosshair::after { content:""; position:absolute; background:rgba(255,255,255,.6); }
+#crosshair::before { left:9px; top:0; width:2px; height:20px; }
+#crosshair::after { top:9px; left:0; width:20px; height:2px; }
+#shop { position:fixed; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:8px; z-index:10; }
+.shopBtn { padding:8px 14px; background:rgba(20,20,40,.85); border:1px solid rgba(255,255,255,.2); border-radius:5px; color:#eee; font-family:monospace; font-size:11px; cursor:pointer; }
+.shopBtn:hover { border-color:#e0a23c; }
+.shopBtn .cost { color:#e0a23c; }
+#killFeed { position:fixed; top:40px; right:140px; display:flex; flex-direction:column; gap:3px; z-index:10; pointer-events:none; }
+.kf { font-size:10px; background:rgba(0,0,0,.6); padding:3px 8px; border-radius:3px; animation:kf 5s forwards; }
+@keyframes kf { 0%{opacity:0} 5%,80%{opacity:1} 100%{opacity:0} }
+#overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.7); z-index:40; font-size:20px; color:#e0584a; }
+#controls { position:fixed; bottom:10px; left:10px; font-size:9px; opacity:.4; z-index:10; }
+</style>
+</head>
+<body>
+
+<div id="classSelect">
+  <h1>EMPIRE CLASH</h1>
+  <p>เลือกอาชีพแล้วเข้าสู่สมรภูมิ — สู้กันในเมือง ซื้อทหาร ยึดพื้นที่</p>
+  <input id="nameInput" placeholder="ชื่อ..." maxlength="16" value="player">
+  <div class="classGrid">
+    <div class="classCard" data-class="soldier">
+      <h3>ทหาร</h3>
+      HP 120 | DMG 15
+      <small>ฮึดสู้ ตีใกล้แข็งแรง เงินเก็บช้า</small>
+    </div>
+    <div class="classCard" data-class="merchant">
+      <h3>พ่อค้า</h3>
+      HP 80 | DMG 8
+      <small>เก็บเงินเร็ว ซื้อทหารได้เยอะ</small>
+    </div>
+    <div class="classCard" data-class="engineer">
+      <h3>ช่าง</h3>
+      HP 100 | DMG 10
+      <small>สร้างสิ่งก่อสร้าง กลางๆ</small>
+    </div>
+    <div class="classCard" data-class="commander">
+      <h3>แม่ทัพ</h3>
+      HP 150 | DMG 12
+      <small>แข็งที่สุด บังคับทหารเยอะ แต่ช้า</small>
+    </div>
+  </div>
+</div>
+
+<div id="hud" style="display:none">
+  <div class="left">
+    <div class="bar" id="hpBar"><i style="width:100%"></i><span>HP 100</span></div>
+    <div class="bar" id="goldBar"><i style="width:50%"></i><span>Gold 100</span></div>
+    <div class="bar" id="xpBar"><i style="width:0%"></i><span>LV 1</span></div>
+  </div>
+  <div class="right">
+    <div id="score">K 0 / D 0</div>
+    <div id="playersOnline">0 คนออนไลน์</div>
+  </div>
+</div>
+
+<canvas id="minimap" width="120" height="120"></canvas>
+<div id="crosshair" style="display:none"></div>
+<div id="killFeed"></div>
+
+<div id="shop" style="display:none">
+  <div class="shopBtn" data-unit="infantry">ทหารราบ <span class="cost">50g</span></div>
+  <div class="shopBtn" data-unit="archer">พลธนู <span class="cost">80g</span></div>
+  <div class="shopBtn" data-unit="cavalry">ม้าศึก <span class="cost">150g</span></div>
+</div>
+
+<div id="overlay" style="display:none"></div>
+<div id="controls" style="display:none">WASD เดิน | เมาส์มอง | คลิกยิง | 1-3 ซื้อทหาร | ESC ปลดล็อคเมาส์</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="net.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
