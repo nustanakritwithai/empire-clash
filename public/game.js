@@ -234,6 +234,14 @@
     camBtn.addEventListener("click", function () { toggleCamera(); });
     document.body.appendChild(camBtn);
 
+    // ===== LAYOUT EDIT MODE BUTTON =====
+    var layoutBtn = document.createElement("div");
+    layoutBtn.id = "layoutToggle";
+    layoutBtn.style.cssText = "position:fixed;left:50%;top:10px;transform:translateX(-50%);width:80px;height:28px;border-radius:4px;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);z-index:25;display:flex;align-items:center;justify-content:center;font-size:10px;color:#eee;font-family:monospace;cursor:pointer;touch-action:none";
+    layoutBtn.textContent = "จัดปุ่ม";
+    layoutBtn.addEventListener("click", function () { toggleLayoutMode(); });
+    document.body.appendChild(layoutBtn);
+
     // keyboard hotkey V to toggle camera
     window.addEventListener("keydown", function (e) {
       if (e.code === "KeyV") toggleCamera();
@@ -278,6 +286,7 @@
     nub.style.cssText = "position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.4)";
     joy.appendChild(nub);
     document.body.appendChild(joy);
+    registerLayoutBtn(joy, "joystick");
 
     // --- Q2: shoot button (left-top) ---
     var shootBtn = document.createElement("div");
@@ -285,6 +294,7 @@
     shootBtn.style.cssText = "position:fixed;left:20px;top:70px;width:80px;height:80px;border-radius:50%;background:rgba(196,69,47,0.65);border:2px solid rgba(255,255,255,0.35);z-index:20;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-family:monospace;touch-action:none";
     shootBtn.textContent = "ยิง";
     document.body.appendChild(shootBtn);
+    registerLayoutBtn(shootBtn, "shoot");
 
     var shootHint = document.createElement("div");
     shootHint.style.cssText = "position:fixed;left:20px;top:155px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace;text-align:center;width:80px";
@@ -297,6 +307,7 @@
     crouchBtn.style.cssText = "position:fixed;right:80px;top:70px;width:64px;height:64px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
     crouchBtn.textContent = "ย่อ";
     document.body.appendChild(crouchBtn);
+    registerLayoutBtn(crouchBtn, "crouch");
 
     var crouchHint = document.createElement("div");
     crouchHint.id = "crouchHint";
@@ -316,12 +327,14 @@
     reloadBtn.style.cssText = "position:fixed;right:90px;bottom:20px;width:60px;height:60px;border-radius:50%;background:rgba(224,162,60,0.6);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
     reloadBtn.textContent = "รีโหลด";
     document.body.appendChild(reloadBtn);
+    registerLayoutBtn(reloadBtn, "reload");
 
     var sprintBtn = document.createElement("div");
     sprintBtn.id = "touchSprint";
     sprintBtn.style.cssText = "position:fixed;right:160px;bottom:20px;width:56px;height:56px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
     sprintBtn.textContent = "วิ่ง";
     document.body.appendChild(sprintBtn);
+    registerLayoutBtn(sprintBtn, "sprint");
 
     var lookHint = document.createElement("div");
     lookHint.style.cssText = "position:fixed;right:20px;bottom:85px;font-size:9px;color:rgba(255,255,255,0.4);z-index:20;font-family:monospace;text-align:right";
@@ -496,6 +509,176 @@
     // update controls hint
     var ctrl = document.getElementById("controls");
     if (ctrl) ctrl.textContent = "ซ้ายล่าง:เดิน | ซ้ายบน:ยิงรัว | ขวาบน:ย่อ/หมอบ | ขวาล่าง:มอง/กระโดด/รีโหลด/วิ่ง";
+  }
+
+  // ===== LAYOUT EDIT MODE =====
+  var layoutMode = false;
+  var layoutBtns = []; // {el, id, x, y, w, h}
+  var LAYOUT_KEY = "empire_clash_layout";
+
+  function saveLayout() {
+    var data = {};
+    layoutBtns.forEach(function (b) {
+      data[b.id] = { x: b.x, y: b.y, w: b.w, h: b.h };
+    });
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(data)); } catch (e) {}
+  }
+
+  function loadLayout() {
+    try {
+      var raw = localStorage.getItem(LAYOUT_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+
+  function registerLayoutBtn(el, id) {
+    var rect = el.getBoundingClientRect();
+    var stored = loadLayout();
+    var s = stored && stored[id] ? stored[id] : null;
+    var x = s ? s.x : rect.left;
+    var y = s ? s.y : rect.top;
+    var w = s ? s.w : rect.width;
+    var h = s ? s.h : rect.height;
+    applyBtnPos(el, x, y, w, h);
+    layoutBtns.push({ el: el, id: id, x: x, y: y, w: w, h: h });
+  }
+
+  function applyBtnPos(el, x, y, w, h) {
+    el.style.left = x + "px";
+    el.style.top = y + "px";
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+    el.style.width = w + "px";
+    el.style.height = h + "px";
+  }
+
+  function toggleLayoutMode() {
+    layoutMode = !layoutMode;
+    var btn = document.getElementById("layoutToggle");
+    if (layoutMode) {
+      btn.textContent = "บันทึก";
+      btn.style.background = "rgba(74,157,74,0.8)";
+      // enable drag + resize on all buttons
+      layoutBtns.forEach(function (b) {
+        b.el.style.border = "2px dashed rgba(255,255,255,0.6)";
+        b.el.style.opacity = "0.8";
+        enableDrag(b);
+      });
+      // show help
+      if (!window._layoutHelp) {
+        var help = document.createElement("div");
+        help.id = "layoutHelp";
+        help.style.cssText = "position:fixed;left:50%;top:45px;transform:translateX(-50%);background:rgba(0,0,0,0.8);padding:8px 14px;border-radius:4px;font-size:10px;color:#eee;z-index:30;text-align:center;font-family:monospace";
+        help.innerHTML = "ลากเพื่อย้าย | แตะที่มุมขวาล่างเพื่อย่อ/ขยาย<br>กด บันทึก เพื่อเสร็จ";
+        document.body.appendChild(help);
+        window._layoutHelp = help;
+      }
+      window._layoutHelp.style.display = "block";
+    } else {
+      btn.textContent = "จัดปุ่ม";
+      btn.style.background = "rgba(0,0,0,0.6)";
+      // disable + save
+      layoutBtns.forEach(function (b) {
+        b.el.style.border = "";
+        b.el.style.opacity = "";
+        disableDrag(b);
+        var rect = b.el.getBoundingClientRect();
+        b.x = rect.left; b.y = rect.top; b.w = rect.width; b.h = rect.height;
+      });
+      saveLayout();
+      if (window._layoutHelp) window._layoutHelp.style.display = "none";
+    }
+  }
+
+  function enableDrag(b) {
+    var el = b.el;
+    var dragId = null, resizeId = null;
+    var startX, startY, startBX, startBY, startBW, startBH;
+
+    // resize handle (bottom-right corner)
+    var handle = document.createElement("div");
+    handle.style.cssText = "position:absolute;right:-6px;bottom:-6px;width:18px;height:18px;background:rgba(255,255,255,0.5);border-radius:50%;cursor:nwse-resize;z-index:30";
+    handle.dataset.resizeHandle = "1";
+    el.appendChild(handle);
+    b._handle = handle;
+
+    el._dragStart = function (e) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.target === handle || (handle.contains && handle.contains(t.target))) {
+          resizeId = t.identifier;
+          startX = t.clientX; startY = t.clientY;
+          startBW = el.offsetWidth; startBH = el.offsetHeight;
+          e.preventDefault(); return;
+        }
+        dragId = t.identifier;
+        startX = t.clientX; startY = t.clientY;
+        startBX = el.offsetLeft; startBY = el.offsetTop;
+        e.preventDefault();
+      }
+    };
+
+    el._dragMove = function (e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.identifier === dragId) {
+          var nx = startBX + (t.clientX - startX);
+          var ny = startBY + (t.clientY - startY);
+          nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, nx));
+          ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
+          el.style.left = nx + "px";
+          el.style.top = ny + "px";
+        } else if (t.identifier === resizeId) {
+          var nw = Math.max(36, startBW + (t.clientX - startX));
+          var nh = Math.max(36, startBH + (t.clientY - startY));
+          el.style.width = nw + "px";
+          el.style.height = nh + "px";
+        }
+      }
+    };
+
+    el._dragEnd = function (e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === dragId) dragId = null;
+        if (e.changedTouches[i].identifier === resizeId) resizeId = null;
+      }
+    };
+
+    el.addEventListener("touchstart", el._dragStart, { passive: false });
+    el.addEventListener("touchmove", el._dragMove, { passive: false });
+    el.addEventListener("touchend", el._dragEnd, { passive: false });
+
+    // mouse support
+    var mDown = false, mResize = false;
+    el._mouseDown = function (e) {
+      if (e.target === handle) { mResize = true; startX = e.clientX; startY = e.clientY; startBW = el.offsetWidth; startBH = el.offsetHeight; }
+      else { mDown = true; startX = e.clientX; startY = e.clientY; startBX = el.offsetLeft; startBY = el.offsetTop; }
+      e.preventDefault();
+    };
+    el._mouseMove = function (e) {
+      if (mDown) {
+        var nx = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, startBX + (e.clientX - startX)));
+        var ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, startBY + (e.clientY - startY)));
+        el.style.left = nx + "px"; el.style.top = ny + "px";
+      } else if (mResize) {
+        el.style.width = Math.max(36, startBW + (e.clientX - startX)) + "px";
+        el.style.height = Math.max(36, startBH + (e.clientY - startY)) + "px";
+      }
+    };
+    el._mouseUp = function () { mDown = false; mResize = false; };
+    el.addEventListener("mousedown", el._mouseDown);
+    document.addEventListener("mousemove", el._mouseMove);
+    document.addEventListener("mouseup", el._mouseUp);
+  }
+
+  function disableDrag(b) {
+    var el = b.el;
+    if (el._dragStart) { el.removeEventListener("touchstart", el._dragStart); el.removeEventListener("touchmove", el._dragMove); el.removeEventListener("touchend", el._dragEnd); }
+    if (el._mouseDown) { el.removeEventListener("mousedown", el._mouseDown); document.removeEventListener("mousemove", el._mouseMove); document.removeEventListener("mouseup", el._mouseUp); }
+    if (b._handle && b._handle.parentNode) b._handle.parentNode.removeChild(b._handle);
   }
 
   // ===== CAMERA TOGGLE =====
