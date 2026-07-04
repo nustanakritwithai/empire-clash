@@ -120,6 +120,15 @@ export const WORLD = {
   ]
 };
 
+// Round config — config-driven for Phase 21 balance pass
+export const ROUND_CONFIG = {
+  scoreInterval: 10000,     // ms between score ticks
+  scorePerTick: 10,         // points per tick for owning Central Fort
+  winScore: 1000,           // first faction to this score wins
+  roundResetDelay: 5000,   // ms countdown before new round
+  initialScore: 0
+};
+
 // Capture point configuration — config-driven for Phase 6 scoring reuse
 export const CAPTURE_POINTS = [
   {

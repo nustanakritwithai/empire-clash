@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   var WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
-  var NET = { ws: null, id: null, connected: false, players: new Map(), units: [], events: [], capturePoints: [] };
+  var NET = { ws: null, id: null, connected: false, players: new Map(), units: [], events: [], capturePoints: [], factionScores: { ironhold: 0, verdant: 0 }, roundWinner: null, roundResetAt: 0 };
   window.NET = NET;
 
   function netSend(o) {
@@ -61,6 +61,9 @@
       NET.players.forEach(function (v, k) { if (!seen[k]) NET.players.delete(k); });
       NET.units = m.units || [];
       NET.capturePoints = m.capturePoints || [];
+      NET.factionScores = m.factionScores || { ironhold: 0, verdant: 0 };
+      NET.roundWinner = m.roundWinner || null;
+      NET.roundResetAt = m.roundResetAt || 0;
     } else if (m.t === "event") {
       NET.events.push(m);
       if (NET.events.length > 20) NET.events.shift();

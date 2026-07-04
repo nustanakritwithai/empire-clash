@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS, ROUND_CONFIG } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -24,6 +24,11 @@ export class GameRoom {
     this._uid = 1;
     // deep copy capture points so we don't mutate the config export
     this.capturePoints = CAPTURE_POINTS.map(cp => ({ ...cp }));
+    // round state
+    this.factionScores = { ironhold: ROUND_CONFIG.initialScore, verdant: ROUND_CONFIG.initialScore };
+    this.lastScoreTick = Date.now();
+    this.roundWinner = null;       // faction that won, null during active round
+    this.roundResetAt = 0;         // timestamp when new round starts (after countdown)
     this.timer = setInterval(() => this.update(), TICK_MS);
     this.lastTick = Date.now();
   }
@@ -351,12 +356,47 @@ export class GameRoom {
       }
     }
 
-    // broadcast snapshot with capture data
+    // ===== FACTION SCORE + ROUND LOOP =====
+    if (!this.roundWinner) {
+      // active round: award score to faction owning central fort
+      if (now - this.lastScoreTick >= ROUND_CONFIG.scoreInterval) {
+        this.lastScoreTick = now;
+        for (const cp of this.capturePoints) {
+          if (cp.owner) {
+            this.factionScores[cp.owner] = (this.factionScores[cp.owner] || 0) + ROUND_CONFIG.scorePerTick;
+          }
+        }
+        // check win condition
+        for (const fac of Object.keys(this.factionScores)) {
+          if (this.factionScores[fac] >= ROUND_CONFIG.winScore) {
+            this.roundWinner = fac;
+            this.roundResetAt = now + ROUND_CONFIG.roundResetDelay;
+            console.log("[Round] " + fac + " wins with " + this.factionScores[fac] + " points!");
+            this.broadcast({
+              t: "event",
+              kind: "roundWin",
+              data: { winner: fac, winnerName: FACTIONS[fac].name, scores: { ...this.factionScores } }
+            });
+            break;
+          }
+        }
+      }
+    } else {
+      // round over: wait for countdown, then reset
+      if (now >= this.roundResetAt) {
+        this.resetRound();
+      }
+    }
+
+    // broadcast snapshot with capture data + round state
     this.broadcast({
       t: "snapshot",
       players: this.snapshotPlayers(),
       units: this.snapshotUnits(),
-      capturePoints: this.snapshotCapturePoints()
+      capturePoints: this.snapshotCapturePoints(),
+      factionScores: { ...this.factionScores },
+      roundWinner: this.roundWinner,
+      roundResetAt: this.roundResetAt
     });
   }
 
@@ -409,6 +449,42 @@ export class GameRoom {
       progress: Math.round(cp.progress * 10) / 10,
       contested: cp.contested
     }));
+  }
+
+  resetRound() {
+    // reset scores
+    this.factionScores = { ironhold: ROUND_CONFIG.initialScore, verdant: ROUND_CONFIG.initialScore };
+    this.lastScoreTick = Date.now();
+    this.roundWinner = null;
+    this.roundResetAt = 0;
+    // reset capture points
+    for (const cp of this.capturePoints) {
+      cp.owner = null;
+      cp.capturing = null;
+      cp.progress = 0;
+      cp.contested = false;
+    }
+    // clear temporary units
+    this.units = [];
+    // respawn all players at faction base
+    for (const p of this.players.values()) {
+      const fsp = FACTIONS[p.faction] ? FACTIONS[p.faction].spawn : { x: 0, z: 0 };
+      p.dead = false;
+      p.hp = p.maxHp;
+      p.x = fsp.x + rand(-5, 5);
+      p.z = fsp.z + rand(-5, 5);
+      p.prevX = p.x;
+      p.prevZ = p.z;
+      p.kills = 0;
+      p.deaths = 0;
+      p.score = 0;
+    }
+    console.log("[Round] New round started");
+    this.broadcast({
+      t: "event",
+      kind: "roundReset",
+      data: {}
+    });
   }
 
   broadcast(msg, exceptId) {

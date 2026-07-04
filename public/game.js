@@ -1438,6 +1438,13 @@
         var capText = d.name + " ถูกยึดโดย " + (d.owner === "ironhold" ? "Ironhold" : "Verdant");
         addKillFeed(capText);
         if (typeof toast === "function") toast(capText);
+      } else if (m.kind === "roundWin") {
+        var winText = d.winnerName + " ชนะรอบ!";
+        addKillFeed(winText);
+        if (typeof toast === "function") toast(winText);
+      } else if (m.kind === "roundReset") {
+        addKillFeed("รอบใหม่เริ่มแล้ว!");
+        if (typeof toast === "function") toast("รอบใหม่เริ่มแล้ว!");
       }
     }
   }
@@ -1592,6 +1599,7 @@
     updateHUD();
     drawMinimap();
     updateCaptureFlags();
+    updateScoreHud();
 
     G.renderer.render(G.scene, G.camera);
   }
@@ -1656,6 +1664,47 @@
           '<div style="font-size:10px;color:' + statusColor + '">' + statusText + ' (' + cp.progress + '%)</div>';
       }
     });
+  }
+
+  // ===== SCORE HUD + WINNER OVERLAY =====
+  function updateScoreHud() {
+    if (typeof NET === "undefined" || !NET.id) return;
+    var hud = document.getElementById("scoreHud");
+    if (!hud) return;
+    hud.style.display = "block";
+    var scores = NET.factionScores || { ironhold: 0, verdant: 0 };
+    var iron = scores.ironhold || 0;
+    var verdant = scores.verdant || 0;
+    var winScore = 1000;
+    var ironPct = Math.min(100, (iron / winScore) * 100);
+    var verdantPct = Math.min(100, (verdant / winScore) * 100);
+    hud.innerHTML =
+      '<div style="display:flex;gap:8px;align-items:center;font-size:11px">' +
+      '<span style="color:#4a7da8;font-weight:bold">Ironhold ' + iron + '</span>' +
+      '<div style="width:120px;height:10px;border:1px solid rgba(255,255,255,.2);border-radius:3px;background:rgba(0,0,0,.5);overflow:hidden;display:flex">' +
+      '<div style="height:100%;width:' + ironPct + '%;background:#4a7da8"></div>' +
+      '<div style="height:100%;width:' + verdantPct + '%;background:#4aa84a;margin-left:auto"></div>' +
+      '</div>' +
+      '<span style="color:#4aa84a;font-weight:bold">' + verdant + ' Verdant</span>' +
+      '</div>';
+
+    var overlay = document.getElementById("winnerOverlay");
+    if (overlay) {
+      if (NET.roundWinner) {
+        overlay.style.display = "flex";
+        var winnerName = NET.roundWinner === "ironhold" ? "Ironhold" : "Verdant";
+        var winnerColor = NET.roundWinner === "ironhold" ? "#4a7da8" : "#4aa84a";
+        var countdown = Math.max(0, Math.ceil((NET.roundResetAt - Date.now()) / 1000));
+        overlay.innerHTML =
+          '<div style="text-align:center">' +
+          '<div style="font-size:28px;font-weight:bold;color:' + winnerColor + ';letter-spacing:3px;margin-bottom:10px">' + winnerName + ' VICTORY!</div>' +
+          '<div style="font-size:14px;color:#eee;margin-bottom:8px">Ironhold: ' + iron + ' | Verdant: ' + verdant + '</div>' +
+          '<div style="font-size:12px;color:#aaa">รอบใหม่ใน ' + countdown + ' วินาที...</div>' +
+          '</div>';
+      } else {
+        overlay.style.display = "none";
+      }
+    }
   }
 
   // ===== FACTION SELECT =====
