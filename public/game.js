@@ -122,6 +122,39 @@
     // player stats already set by class select, just set position
     G.camera.position.set(G.player.x, G.player.y, G.player.z);
 
+    // ===== LOCAL PLAYER MESH (for 3rd person) =====
+    var pColor = CLASSES[G.playerClass] ? CLASSES[G.playerClass].color : 0x4a7da8;
+    G.playerMesh = new THREE.Group();
+    // body
+    var body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.35, 1.0, 4, 8),
+      new THREE.MeshLambertMaterial({ color: pColor })
+    );
+    body.position.y = 0.8;
+    body.castShadow = true;
+    G.playerMesh.add(body);
+    // head
+    var head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, 8, 6),
+      new THREE.MeshLambertMaterial({ color: 0xefc79d })
+    );
+    head.position.y = 1.6;
+    head.castShadow = true;
+    G.playerMesh.add(head);
+    // simple gun (box) pointing forward
+    var gun = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.12, 0.6),
+      new THREE.MeshLambertMaterial({ color: 0x333333 })
+    );
+    gun.position.set(0.3, 1.0, -0.3);
+    G.playerMesh.add(gun);
+    G.playerMesh.visible = false; // hidden in 1st person
+    G.scene.add(G.playerMesh);
+
+    // camera mode: 1st or 3rd person
+    G.cameraMode = "first"; // "first" or "third"
+    G.cameraDistance = 4.5;
+
     // events
     window.addEventListener("keydown", function (e) { G.keys[e.code] = true; });
     window.addEventListener("keyup", function (e) { G.keys[e.code] = false; });
@@ -152,6 +185,20 @@
       btn.addEventListener("click", function () {
         netSend({ t: "buyUnit", unit: btn.dataset.unit });
       });
+    });
+
+    // camera toggle button
+    var camBtn = document.createElement("div");
+    camBtn.id = "camToggle";
+    camBtn.style.cssText = "position:fixed;right:20px;top:180px;width:48px;height:48px;border-radius:50%;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);z-index:15;display:flex;align-items:center;justify-content:center;font-size:9px;color:#eee;font-family:monospace;cursor:pointer;touch-action:none";
+    camBtn.textContent = "1st";
+    camBtn.title = "สลับมุมกล้อง (V)";
+    camBtn.addEventListener("click", function () { toggleCamera(); });
+    document.body.appendChild(camBtn);
+
+    // keyboard hotkey V to toggle camera
+    window.addEventListener("keydown", function (e) {
+      if (e.code === "KeyV") toggleCamera();
     });
 
     // ===== TOUCH CONTROLS =====
@@ -298,6 +345,14 @@
     // hide controls hint
     var ctrl = document.getElementById("controls");
     if (ctrl) ctrl.textContent = "จอยซ้ายเดิน | ลากขวามอง | ปุ่มยิง | ปุ่มวิ่ง";
+  }
+
+  // ===== CAMERA TOGGLE =====
+  function toggleCamera() {
+    G.cameraMode = (G.cameraMode === "first") ? "third" : "first";
+    var btn = document.getElementById("camToggle");
+    if (btn) btn.textContent = (G.cameraMode === "first") ? "1st" : "3rd";
+    if (G.playerMesh) G.playerMesh.visible = (G.cameraMode === "third");
   }
 
   // ===== SHOOTING =====
@@ -585,10 +640,37 @@
     processEvents();
 
     // camera follows player
-    G.camera.position.set(G.player.x, G.player.y, G.player.z);
     G.camera.rotation.order = "YXZ";
     G.camera.rotation.y = G.yaw;
     G.camera.rotation.x = G.pitch;
+
+    if (G.cameraMode === "third" && G.playerMesh) {
+      // 3rd person: camera behind and above player
+      G.playerMesh.position.set(G.player.x, 0, G.player.z);
+      G.playerMesh.rotation.y = G.yaw;
+      // calculate camera offset behind player based on yaw/pitch
+      var camDist = G.cameraDistance;
+      var camHeight = 2.0 + Math.sin(G.pitch) * 2;
+      var offsetX = Math.sin(G.yaw) * camDist * Math.cos(G.pitch);
+      var offsetZ = Math.cos(G.yaw) * camDist * Math.cos(G.pitch);
+      G.camera.position.set(
+        G.player.x + offsetX,
+        G.player.y + camHeight,
+        G.player.z + offsetZ
+      );
+      // collision: don't let camera go through buildings
+      for (var bi = 0; bi < G.buildings.length; bi++) {
+        var bld = G.buildings[bi];
+        if (Math.abs(G.camera.position.x - bld.x) < bld.w/2 + 0.5 &&
+            Math.abs(G.camera.position.z - bld.z) < bld.d/2 + 0.5) {
+          G.camera.position.set(G.player.x, G.player.y + 2, G.player.z);
+          break;
+        }
+      }
+    } else {
+      // 1st person: camera at eye level
+      G.camera.position.set(G.player.x, G.player.y, G.player.z);
+    }
 
     updateHUD();
     drawMinimap();
