@@ -155,6 +155,44 @@
     G.cameraMode = "first"; // "first" or "third"
     G.cameraDistance = 4.5;
 
+    // ===== GUN MODEL (attached to camera for 1st person) =====
+    G.gunGroup = new THREE.Group();
+    // gun body
+    var gunBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 0.15, 0.8),
+      new THREE.MeshLambertMaterial({ color: 0x2a2a2a })
+    );
+    gunBody.position.set(0, 0, -0.3);
+    G.gunGroup.add(gunBody);
+    // barrel
+    var barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 0.4, 8),
+      new THREE.MeshLambertMaterial({ color: 0x1a1a1a })
+    );
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.02, -0.7);
+    G.gunGroup.add(barrel);
+    // grip
+    var grip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.25, 0.12),
+      new THREE.MeshLambertMaterial({ color: 0x3a2a1a })
+    );
+    grip.position.set(0, -0.18, -0.1);
+    G.gunGroup.add(grip);
+    // muzzle flash (hidden by default)
+    var flashMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0 });
+    G.muzzleFlash = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), flashMat);
+    G.muzzleFlash.position.set(0, 0, -0.9);
+    G.gunGroup.add(G.muzzleFlash);
+    // position gun at bottom-right of view
+    G.gunGroup.position.set(0.35, -0.3, -0.5);
+    G.camera.add(G.gunGroup);
+    G.scene.add(G.camera);
+
+    // bullet system
+    G.bullets = [];
+    G.impacts = [];
+
     // events
     window.addEventListener("keydown", function (e) { G.keys[e.code] = true; });
     window.addEventListener("keyup", function (e) { G.keys[e.code] = false; });
@@ -466,6 +504,7 @@
     var btn = document.getElementById("camToggle");
     if (btn) btn.textContent = (G.cameraMode === "first") ? "1st" : "3rd";
     if (G.playerMesh) G.playerMesh.visible = (G.cameraMode === "third");
+    if (G.gunGroup) G.gunGroup.visible = (G.cameraMode === "first");
   }
 
   // ===== SHOOTING =====
@@ -473,11 +512,23 @@
     if (G.dead || Date.now() - G.lastShoot < G.shootCooldown) return;
     G.lastShoot = Date.now();
 
-    // raycast from camera center
-    var ray = new THREE.Raycaster();
-    ray.setFromCamera({ x: 0, y: 0 }, G.camera);
+    // muzzle flash
+    if (G.muzzleFlash) {
+      G.muzzleFlash.material.opacity = 1;
+      G.muzzleFlash.scale.set(1, 1, 1);
+      setTimeout(function () { if (G.muzzleFlash) G.muzzleFlash.material.opacity = 0; }, 50);
+    }
+    // gun recoil animation
+    if (G.gunGroup) {
+      G.gunGroup.position.z = -0.35;
+      setTimeout(function () { if (G.gunGroup) G.gunGroup.position.z = -0.5; }, 80);
+    }
 
-    // check remote players
+    // get camera direction
+    var camDir = new THREE.Vector3();
+    G.camera.getWorldDirection(camDir);
+
+    // check remote players (cone check)
     var hitId = null, hitDist = Infinity;
     if (typeof NET !== "undefined" && NET.players.size > 0) {
       NET.players.forEach(function (p, id) {
@@ -485,9 +536,6 @@
         var dx = p.tx - G.player.x, dz = p.tz - G.player.z;
         var d = Math.sqrt(dx * dx + dz * dz);
         if (d > 60) return;
-        // simple cone check: is the player near the camera ray?
-        var camDir = new THREE.Vector3();
-        G.camera.getWorldDirection(camDir);
         var toTarget = new THREE.Vector3(dx, 0, dz).normalize();
         var dot = camDir.dot(toTarget);
         if (dot > 0.95 && d < hitDist) { hitId = id; hitDist = d; }
@@ -496,19 +544,131 @@
 
     if (hitId) {
       netSend({ t: "hit", id: hitId, dmg: G.damage || 15 });
+      // impact effect at hit location
+      if (typeof NET !== "undefined" && NET.players.get(hitId)) {
+        var hp = NET.players.get(hitId);
+        spawnImpact(hp.tx, 1.0, hp.tz);
+        spawnBlood(hp.tx, 1.0, hp.tz);
+      }
     }
 
     // send shoot visual to server
-    var camDir2 = new THREE.Vector3();
-    G.camera.getWorldDirection(camDir2);
     netSend({
       t: "shoot",
       x: G.player.x, y: G.player.y, z: G.player.z,
-      dx: camDir2.x, dy: camDir2.y, dz: camDir2.z
+      dx: camDir.x, dy: camDir.y, dz: camDir.z
     });
 
-    // muzzle flash visual
+    // spawn visible bullet (tracer)
+    var startPos = new THREE.Vector3(G.player.x, G.player.y - 0.1, G.player.z);
+    spawnBullet(startPos, camDir);
+
     flashCrosshair();
+  }
+
+  // ===== BULLET SYSTEM =====
+  function spawnBullet(start, dir) {
+    var bulletMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
+    var bullet = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), bulletMat);
+    bullet.position.copy(start);
+    bullet.userData = {
+      vx: dir.x * 80,
+      vy: dir.y * 80,
+      vz: dir.z * 80,
+      life: 1.0,
+      maxLife: 1.0
+    };
+    G.scene.add(bullet);
+    G.bullets.push(bullet);
+
+    // tracer trail (thin line)
+    var trailGeo = new THREE.Geometry();
+    trailGeo.vertices.push(start.clone(), start.clone());
+    var trailMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.6 });
+    var trail = new THREE.Line(trailGeo, trailMat);
+    bullet.userData.trail = trail;
+    G.scene.add(trail);
+  }
+
+  function spawnImpact(x, y, z) {
+    var mat = new THREE.MeshBasicMaterial({ color: 0xff6633, transparent: true, opacity: 1 });
+    var impact = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 6), mat);
+    impact.position.set(x, y, z);
+    impact.userData = { life: 0.3, maxLife: 0.3, scale: 1 };
+    G.scene.add(impact);
+    G.impacts.push(impact);
+  }
+
+  function spawnBlood(x, y, z) {
+    for (var i = 0; i < 6; i++) {
+      var mat = new THREE.MeshBasicMaterial({ color: 0xcc1133, transparent: true, opacity: 1 });
+      var p = new THREE.Mesh(new THREE.SphereGeometry(0.06, 4, 4), mat);
+      p.position.set(x, y, z);
+      p.userData = {
+        vx: (Math.random() - 0.5) * 4,
+        vy: Math.random() * 3 + 1,
+        vz: (Math.random() - 0.5) * 4,
+        life: 0.5, maxLife: 0.5
+      };
+      G.scene.add(p);
+      G.impacts.push(p);
+    }
+  }
+
+  function updateBullets(dt) {
+    // bullets
+    for (var i = G.bullets.length - 1; i >= 0; i--) {
+      var b = G.bullets[i];
+      var ud = b.userData;
+      b.position.x += ud.vx * dt;
+      b.position.y += ud.vy * dt;
+      b.position.z += ud.vz * dt;
+      ud.life -= dt;
+      // update trail
+      if (ud.trail) {
+        ud.trail.geometry.vertices[0].copy(b.position);
+        ud.trail.geometry.vertices[1].copy(b.position).add(new THREE.Vector3(-ud.vx * 0.03, -ud.vy * 0.03, -ud.vz * 0.03));
+        ud.trail.geometry.verticesNeedUpdate = true;
+        ud.trail.material.opacity = Math.max(0, ud.life / ud.maxLife * 0.6);
+      }
+      // check building collision
+      var hit = false;
+      for (var bi = 0; bi < G.buildings.length; bi++) {
+        var bld = G.buildings[bi];
+        if (Math.abs(b.position.x - bld.x) < bld.w/2 && Math.abs(b.position.z - bld.z) < bld.d/2 && b.position.y < bld.h) {
+          spawnImpact(b.position.x, b.position.y, b.position.z);
+          hit = true; break;
+        }
+      }
+      // ground hit
+      if (b.position.y <= 0) {
+        spawnImpact(b.position.x, 0.1, b.position.z);
+        hit = true;
+      }
+      if (hit || ud.life <= 0) {
+        if (ud.trail) G.scene.remove(ud.trail);
+        G.scene.remove(b);
+        G.bullets.splice(i, 1);
+      }
+    }
+    // impacts + blood particles
+    for (var j = G.impacts.length - 1; j >= 0; j--) {
+      var im = G.impacts[j];
+      var iud = im.userData;
+      if (iud.vx != null) {
+        im.position.x += iud.vx * dt;
+        im.position.y += iud.vy * dt;
+        im.position.z += iud.vz * dt;
+        iud.vy -= 10 * dt; // gravity on blood
+      }
+      iud.life -= dt;
+      im.material.opacity = Math.max(0, iud.life / iud.maxLife);
+      im.scale.multiplyScalar(0.95);
+      if (iud.life <= 0) {
+        G.scene.remove(im);
+        G.impacts.splice(j, 1);
+      }
+    }
   }
 
   function flashCrosshair() {
@@ -787,6 +947,7 @@
     updateMovement(dt);
     updateRemotes(dt);
     updateUnits(dt);
+    updateBullets(dt);
     processEvents();
 
     // camera follows player
