@@ -173,6 +173,78 @@
 
     G.captureFlags["central_fort"] = { pole: cpPole, flag: cpFlag, ring: cpRing };
 
+    // ===== RESOURCE NODES: trees (North Forest) + rocks (South Quarry) =====
+    G.resourceMeshes = {}; // id -> mesh
+    // trees
+    for (var ti = 0; ti < 5; ti++) {
+      var tx = [-20, 0, 20, -10, 10][ti];
+      var tz = [-60, -65, -60, -50, -50][ti];
+      // trunk
+      var trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.4, 3, 6),
+        new THREE.MeshLambertMaterial({ color: 0x6b4423 })
+      );
+      trunk.position.set(tx, 1.5, tz);
+      trunk.castShadow = true;
+      G.scene.add(trunk);
+      // foliage (cone)
+      var foliage = new THREE.Mesh(
+        new THREE.ConeGeometry(2, 4, 6),
+        new THREE.MeshLambertMaterial({ color: 0x2d6b2d })
+      );
+      foliage.position.set(tx, 4.5, tz);
+      foliage.castShadow = true;
+      G.scene.add(foliage);
+      G.resourceMeshes["tree_" + (ti + 1)] = { trunk: trunk, foliage: foliage };
+    }
+    // rocks
+    for (var ri = 0; ri < 5; ri++) {
+      var rx = [-20, 0, 20, -10, 10][ri];
+      var rz = [60, 65, 60, 50, 50][ri];
+      var rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(1.5, 0),
+        new THREE.MeshLambertMaterial({ color: 0x888888 })
+      );
+      rock.position.set(rx, 1, rz);
+      rock.castShadow = true;
+      G.scene.add(rock);
+      G.resourceMeshes["rock_" + (ri + 1)] = { mesh: rock };
+    }
+
+    // ===== WAREHOUSES (faction-colored buildings at each base) =====
+    G.warehouseMeshes = {};
+    // Ironhold warehouse (left, blue roof)
+    var wh1Base = new THREE.Mesh(
+      new THREE.BoxGeometry(6, 4, 6),
+      new THREE.MeshLambertMaterial({ color: 0x555555 })
+    );
+    wh1Base.position.set(-85, 2, 10);
+    wh1Base.castShadow = true;
+    G.scene.add(wh1Base);
+    var wh1Roof = new THREE.Mesh(
+      new THREE.ConeGeometry(5, 2, 4),
+      new THREE.MeshLambertMaterial({ color: 0x4a7da8 })
+    );
+    wh1Roof.position.set(-85, 5, 10);
+    G.scene.add(wh1Roof);
+    G.warehouseMeshes["ironhold"] = { base: wh1Base, roof: wh1Roof };
+
+    // Verdant warehouse (right, green roof)
+    var wh2Base = new THREE.Mesh(
+      new THREE.BoxGeometry(6, 4, 6),
+      new THREE.MeshLambertMaterial({ color: 0x555555 })
+    );
+    wh2Base.position.set(85, 2, 10);
+    wh2Base.castShadow = true;
+    G.scene.add(wh2Base);
+    var wh2Roof = new THREE.Mesh(
+      new THREE.ConeGeometry(5, 2, 4),
+      new THREE.MeshLambertMaterial({ color: 0x4aa84a })
+    );
+    wh2Roof.position.set(85, 5, 10);
+    G.scene.add(wh2Roof);
+    G.warehouseMeshes["verdant"] = { base: wh2Base, roof: wh2Roof };
+
     // player stats already set by class select, just set position
     G.camera.position.set(G.player.x, G.player.y, G.player.z);
 
@@ -309,6 +381,7 @@
       if (e.code === "Digit2") switchWeapon(1);
       if (e.code === "Digit3") switchWeapon(2);
       if (e.code === "KeyF" || e.code === "KeyQ") melee();
+      if (e.code === "KeyE") tryInteract();
     });
 
     // ===== TOUCH CONTROLS =====
@@ -1600,6 +1673,8 @@
     drawMinimap();
     updateCaptureFlags();
     updateScoreHud();
+    updateInteractionPrompt();
+    updateResourceHud();
 
     G.renderer.render(G.scene, G.camera);
   }
@@ -1705,6 +1780,101 @@
         overlay.style.display = "none";
       }
     }
+  }
+
+  // ===== RESOURCE INTERACTION (Phase 7) =====
+  var GATHER_RADIUS = 5;
+  var DEPOSIT_RADIUS = 12;
+
+  function tryInteract() {
+    if (G.dead) return;
+    // check near resource node
+    if (typeof NET === "undefined" || !NET.resourceNodes) return;
+    var nearNode = null, nearDist = Infinity;
+    for (var i = 0; i < NET.resourceNodes.length; i++) {
+      var node = NET.resourceNodes[i];
+      var dx = node.x - G.player.x, dz = node.z - G.player.z;
+      var d = Math.sqrt(dx * dx + dz * dz);
+      if (d < GATHER_RADIUS && d < nearDist) { nearNode = node; nearDist = d; }
+    }
+    if (nearNode) {
+      if (G.playerClass !== "worker") {
+        toast("ต้องเป็นคนงานเท่านั้น");
+        return;
+      }
+      netSend({ t: "gather", nodeId: nearNode.id });
+      return;
+    }
+    // check near own warehouse
+    var wh = NET.warehouses ? NET.warehouses[G.playerFaction] : null;
+    if (wh) {
+      var wdx = wh.x - G.player.x, wdz = wh.z - G.player.z;
+      var wd = Math.sqrt(wdx * wdx + wdz * wdz);
+      if (wd < (wh.radius || DEPOSIT_RADIUS)) {
+        netSend({ t: "deposit" });
+        return;
+      }
+    }
+  }
+
+  function updateInteractionPrompt() {
+    if (G.dead || typeof NET === "undefined" || !NET.resourceNodes) { hideInteractionPrompt(); return; }
+    var prompt = document.getElementById("interactPrompt");
+    if (!prompt) return;
+    // check near resource node
+    var nearNode = null, nearDist = Infinity;
+    for (var i = 0; i < NET.resourceNodes.length; i++) {
+      var node = NET.resourceNodes[i];
+      var dx = node.x - G.player.x, dz = node.z - G.player.z;
+      var d = Math.sqrt(dx * dx + dz * dz);
+      if (d < GATHER_RADIUS && d < nearDist) { nearNode = node; nearDist = d; }
+    }
+    if (nearNode) {
+      prompt.style.display = "block";
+      if (G.playerClass === "worker") {
+        prompt.textContent = "กด E เก็บ " + (nearNode.type === "wood" ? "ไม้" : "หิน") + " (" + nearNode.amount + ")";
+        prompt.style.color = "#e0a23c";
+      } else {
+        prompt.textContent = "ต้องเป็นคนงานเท่านั้น";
+        prompt.style.color = "#888";
+      }
+      return;
+    }
+    // check near own warehouse
+    var wh = NET.warehouses ? NET.warehouses[G.playerFaction] : null;
+    if (wh) {
+      var wdx = wh.x - G.player.x, wdz = wh.z - G.player.z;
+      var wd = Math.sqrt(wdx * wdx + wdz * wdz);
+      if (wd < (wh.radius || DEPOSIT_RADIUS)) {
+        var inv = G.player.inventory || { wood: 0, stone: 0 };
+        if (inv.wood > 0 || inv.stone > 0) {
+          prompt.style.display = "block";
+          prompt.textContent = "กด E ฝากทรัพยากร (ไม้ " + (inv.wood || 0) + " หิน " + (inv.stone || 0) + ")";
+          prompt.style.color = "#e0a23c";
+          return;
+        }
+      }
+    }
+    hideInteractionPrompt();
+  }
+
+  function hideInteractionPrompt() {
+    var prompt = document.getElementById("interactPrompt");
+    if (prompt) prompt.style.display = "none";
+  }
+
+  function updateResourceHud() {
+    if (typeof NET === "undefined" || !NET.id) return;
+    var hud = document.getElementById("resourceHud");
+    if (!hud) return;
+    hud.style.display = "block";
+    var inv = G.player.inventory || { wood: 0, stone: 0 };
+    var facRes = NET.factionResources || {};
+    var myFac = G.playerFaction;
+    var fr = facRes[myFac] || { wood: 0, stone: 0 };
+    hud.innerHTML =
+      '<div style="font-size:10px;color:#aaa">กระเป๋า: ไม้ ' + (inv.wood || 0) + ' | หิน ' + (inv.stone || 0) + '</div>' +
+      '<div style="font-size:10px;color:' + (myFac === "ironhold" ? "#4a7da8" : "#4aa84a") + '">ฝ่าย: ไม้ ' + (fr.wood || 0) + ' | หิน ' + (fr.stone || 0) + '</div>';
   }
 
   // ===== FACTION SELECT =====

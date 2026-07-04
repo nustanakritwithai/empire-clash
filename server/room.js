@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS, ROUND_CONFIG } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS, ROUND_CONFIG, RESOURCE_CONFIG, RESOURCE_NODES, WAREHOUSES } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -29,6 +29,13 @@ export class GameRoom {
     this.lastScoreTick = Date.now();
     this.roundWinner = null;       // faction that won, null during active round
     this.roundResetAt = 0;         // timestamp when new round starts (after countdown)
+    // resource state
+    this.resourceNodes = RESOURCE_NODES.map(n => ({ ...n }));
+    this.factionResources = {
+      ironhold: { ...RESOURCE_CONFIG.initialFactionResources },
+      verdant:  { ...RESOURCE_CONFIG.initialFactionResources }
+    };
+    this.lastNodeRegen = Date.now();
     this.timer = setInterval(() => this.update(), TICK_MS);
     this.lastTick = Date.now();
   }
@@ -88,7 +95,9 @@ export class GameRoom {
         shootWindowStart: Date.now(),
         lastHitTime: 0,
         lastShootTime: 0,
-        anim: "idle"
+        anim: "idle",
+        inventory: { wood: 0, stone: 0 }, // Phase 7: player resource inventory
+        lastGatherTime: 0
       });
       return;
     }
@@ -221,6 +230,42 @@ export class GameRoom {
       });
     } else if (m.t === "ping") {
       ws.send(encode({ t: "pong" }));
+    } else if (m.t === "gather") {
+      // Phase 7: Worker gathers from resource node
+      if (p.class !== "worker") return; // only Worker can gather
+      if (now - p.lastGatherTime < RESOURCE_CONFIG.gatherCooldown) return;
+      const node = this.resourceNodes.find(n => n.id === m.nodeId);
+      if (!node || node.amount <= 0) return;
+      const dx = p.x - node.x, dz = p.z - node.z;
+      if (dx * dx + dz * dz > RESOURCE_CONFIG.gatherRadius * RESOURCE_CONFIG.gatherRadius) return;
+      // check inventory capacity
+      if (p.inventory[node.type] >= RESOURCE_CONFIG.carryCapacity) return;
+      // all validation passed
+      p.lastGatherTime = now;
+      const amount = Math.min(RESOURCE_CONFIG.gatherAmount, node.amount, RESOURCE_CONFIG.carryCapacity - p.inventory[node.type]);
+      node.amount -= amount;
+      p.inventory[node.type] += amount;
+      p.gold += 1; // small reward for gathering
+    } else if (m.t === "deposit") {
+      // Phase 7: deposit resources at faction warehouse
+      const wh = WAREHOUSES[p.faction];
+      if (!wh) return;
+      const dx = p.x - wh.x, dz = p.z - wh.z;
+      if (dx * dx + dz * dz > wh.radius * wh.radius) return;
+      // move resources from inventory to faction resources
+      let totalDeposited = 0;
+      for (const res of ["wood", "stone"]) {
+        const amt = p.inventory[res] || 0;
+        if (amt > 0) {
+          this.factionResources[p.faction][res] = (this.factionResources[p.faction][res] || 0) + amt;
+          p.gold += amt * RESOURCE_CONFIG.depositReward;
+          totalDeposited += amt;
+          p.inventory[res] = 0;
+        }
+      }
+      if (totalDeposited > 0) {
+        p.score += totalDeposited; // contribution score
+      }
     }
   }
 
@@ -356,6 +401,16 @@ export class GameRoom {
       }
     }
 
+    // ===== RESOURCE NODE REGEN =====
+    if (now - this.lastNodeRegen >= RESOURCE_CONFIG.nodeRegenInterval) {
+      this.lastNodeRegen = now;
+      for (const node of this.resourceNodes) {
+        if (node.amount < node.maxAmount) {
+          node.amount = Math.min(node.maxAmount, node.amount + RESOURCE_CONFIG.nodeRegenAmount);
+        }
+      }
+    }
+
     // ===== FACTION SCORE + ROUND LOOP =====
     if (!this.roundWinner) {
       // active round: award score to faction owning central fort
@@ -396,7 +451,10 @@ export class GameRoom {
       capturePoints: this.snapshotCapturePoints(),
       factionScores: { ...this.factionScores },
       roundWinner: this.roundWinner,
-      roundResetAt: this.roundResetAt
+      roundResetAt: this.roundResetAt,
+      resourceNodes: this.snapshotResourceNodes(),
+      factionResources: { ...this.factionResources },
+      warehouses: WAREHOUSES
     });
   }
 
@@ -419,7 +477,8 @@ export class GameRoom {
         kills: p.kills,
         deaths: p.deaths,
         dead: p.dead,
-        anim: p.anim
+        anim: p.anim,
+        inventory: p.inventory ? { ...p.inventory } : { wood: 0, stone: 0 }
       });
     }
     return arr;
@@ -451,6 +510,17 @@ export class GameRoom {
     }));
   }
 
+  snapshotResourceNodes() {
+    return this.resourceNodes.map(n => ({
+      id: n.id,
+      type: n.type,
+      x: n.x,
+      z: n.z,
+      amount: Math.round(n.amount),
+      maxAmount: n.maxAmount
+    }));
+  }
+
   resetRound() {
     // reset scores
     this.factionScores = { ironhold: ROUND_CONFIG.initialScore, verdant: ROUND_CONFIG.initialScore };
@@ -466,6 +536,12 @@ export class GameRoom {
     }
     // clear temporary units
     this.units = [];
+    // Phase 7: reset resource nodes, faction resources, and player inventories on round reset
+    this.resourceNodes = RESOURCE_NODES.map(n => ({ ...n }));
+    this.factionResources = {
+      ironhold: { ...RESOURCE_CONFIG.initialFactionResources },
+      verdant:  { ...RESOURCE_CONFIG.initialFactionResources }
+    };
     // respawn all players at faction base
     for (const p of this.players.values()) {
       const fsp = FACTIONS[p.faction] ? FACTIONS[p.faction].spawn : { x: 0, z: 0 };
@@ -478,6 +554,7 @@ export class GameRoom {
       p.kills = 0;
       p.deaths = 0;
       p.score = 0;
+      p.inventory = { wood: 0, stone: 0 }; // reset player inventory
     }
     console.log("[Round] New round started");
     this.broadcast({

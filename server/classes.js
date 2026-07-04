@@ -144,3 +144,38 @@ export const CAPTURE_POINTS = [
     contested: false      // true when equal players from both factions inside
   }
 ];
+
+// Resource node config — Phase 7 Worker resource loop
+export const RESOURCE_CONFIG = {
+  gatherCooldown: 800,   // ms between gather actions per player
+  gatherAmount: 5,        // amount per gather
+  carryCapacity: 30,      // max per resource type in player inventory
+  nodeRegenAmount: 2,    // amount regenerated per regen tick
+  nodeRegenInterval: 15000, // ms between node regen ticks
+  depositRadius: 12,    // distance to warehouse to deposit
+  gatherRadius: 5,       // distance to node to gather
+  depositReward: 3,      // coins per resource deposited
+  initialFactionResources: { wood: 0, stone: 0 }
+};
+
+// Resource nodes: trees in North Forest (wood), rocks in South Quarry (stone)
+export const RESOURCE_NODES = [
+  // North Forest — trees (wood) at z < -40
+  { id: "tree_1", type: "wood", x: -20, z: -60, amount: 50, maxAmount: 50 },
+  { id: "tree_2", type: "wood", x: 0,   z: -65, amount: 50, maxAmount: 50 },
+  { id: "tree_3", type: "wood", x: 20,  z: -60, amount: 50, maxAmount: 50 },
+  { id: "tree_4", type: "wood", x: -10, z: -50, amount: 50, maxAmount: 50 },
+  { id: "tree_5", type: "wood", x: 10,  z: -50, amount: 50, maxAmount: 50 },
+  // South Quarry — rocks (stone) at z > 40
+  { id: "rock_1", type: "stone", x: -20, z: 60, amount: 50, maxAmount: 50 },
+  { id: "rock_2", type: "stone", x: 0,   z: 65, amount: 50, maxAmount: 50 },
+  { id: "rock_3", type: "stone", x: 20,  z: 60, amount: 50, maxAmount: 50 },
+  { id: "rock_4", type: "stone", x: -10, z: 50, amount: 50, maxAmount: 50 },
+  { id: "rock_5", type: "stone", x: 10,  z: 50, amount: 50, maxAmount: 50 }
+];
+
+// Faction warehouses — near each base, for depositing resources
+export const WAREHOUSES = {
+  ironhold: { x: -85, z: 10, radius: 12 },
+  verdant:  { x: 85,  z: 10, radius: 12 }
+};
