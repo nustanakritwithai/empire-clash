@@ -28,3 +28,5 @@ test_ws.mjs
 test_movement.mjs
 test_stability.mjs
 test_security.mjs
+test_faction.mjs
+test_faction_debug.mjs

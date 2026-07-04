@@ -12,11 +12,11 @@
   }
   window.netSend = netSend;
 
-  function netConnect(name, cls) {
+  function netConnect(name, cls, faction) {
     try { NET.ws = new WebSocket(WS_URL); } catch (e) { NET.connected = false; return; }
     NET.ws.onopen = function () {
       NET.connected = true;
-      netSend({ t: "join", name: name, class: cls });
+      netSend({ t: "join", name: name, class: cls, faction: faction || "ironhold" });
       if (typeof toast === "function") toast("เชื่อมต่อเซิร์ฟเวอร์แล้ว");
     };
     NET.ws.onmessage = function (e) {
@@ -25,7 +25,7 @@
     };
     NET.ws.onclose = function () {
       NET.connected = false;
-      setTimeout(function () { if (window.G && G.playerName) netConnect(G.playerName, G.playerClass); }, 2000);
+      setTimeout(function () { if (window.G && G.playerName) netConnect(G.playerName, G.playerClass, G.playerFaction); }, 2000);
     };
     NET.ws.onerror = function () {};
   }
@@ -54,7 +54,7 @@
         seen[p.id] = 1;
         var e = NET.players.get(p.id);
         if (!e) { e = { x: p.x, y: p.y, z: p.z }; NET.players.set(p.id, e); }
-        e.id = p.id; e.name = p.name; e.class = p.class;
+        e.id = p.id; e.name = p.name; e.class = p.class; e.faction = p.faction;
         e.tx = p.x; e.ty = p.y; e.tz = p.z; e.rx = p.rx; e.ry = p.ry;
         e.hp = p.hp; e.maxHp = p.maxHp; e.dead = p.dead; e.anim = p.anim;
       });

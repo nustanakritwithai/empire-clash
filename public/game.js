@@ -948,6 +948,8 @@
     if (typeof NET !== "undefined" && NET.players.size > 0) {
       NET.players.forEach(function (p, id) {
         if (p.dead) return;
+        // client-side friendly fire filter: skip same faction (server is final authority)
+        if (p.faction === G.playerFaction) return;
         var dx = p.tx - G.player.x, dz = p.tz - G.player.z;
         var d = Math.sqrt(dx * dx + dz * dz);
         if (d > w.range) return;
@@ -1027,6 +1029,8 @@
     if (typeof NET !== "undefined" && NET.players.size > 0) {
       NET.players.forEach(function (p, id) {
         if (p.dead) return;
+        // client-side friendly fire filter: skip same faction (server is final authority)
+        if (p.faction === G.playerFaction) return;
         var dx = p.tx - G.player.x, dz = p.tz - G.player.z;
         var d = Math.sqrt(dx * dx + dz * dz);
         if (d > G.meleeRange) return;
@@ -1281,6 +1285,16 @@
   }
 
   // ===== REMOTE PLAYERS =====
+  // faction color lookup for client rendering
+  var FACTION_COLORS = {
+    ironhold: 0x4a7da8,
+    verdant:  0x4aa84a
+  };
+  var FACTION_HEX = {
+    ironhold: "#4a7da8",
+    verdant:  "#4aa84a"
+  };
+
   function updateRemotes(dt) {
     if (typeof NET === "undefined") return;
     NET.players.forEach(function (p, id) {
@@ -1288,7 +1302,8 @@
       // lerp
       if (!p.mesh) {
         var geo = new THREE.CylinderGeometry(0.4, 0.4, 1.4, 8);
-        var mat = new THREE.MeshLambertMaterial({ color: CLASSES[p.class] ? CLASSES[p.class].color : 0x888888 });
+        var facColor = FACTION_COLORS[p.faction] || 0x888888;
+        var mat = new THREE.MeshLambertMaterial({ color: facColor });
         p.mesh = new THREE.Mesh(geo, mat);
         p.mesh.castShadow = true;
         G.scene.add(p.mesh);
@@ -1303,18 +1318,25 @@
         p.tag.position.y = 2.5;
         G.scene.add(p.tag);
       }
+      // update faction color if it changed or arrived after mesh creation
+      var expectedColor = FACTION_COLORS[p.faction] || 0x888888;
+      if (p.mesh.material.color.getHex() !== expectedColor) {
+        p.mesh.material.color.setHex(expectedColor);
+      }
       p.mesh.position.x += (p.tx - p.mesh.position.x) * Math.min(1, dt * 10);
       p.mesh.position.z += (p.tz - p.mesh.position.z) * Math.min(1, dt * 10);
       p.mesh.position.y = p.dead ? -5 : 0.8;
       p.mesh.rotation.y = p.ry || 0;
       p.tag.position.x = p.mesh.position.x;
       p.tag.position.z = p.mesh.position.z;
-      // update name tag
+      // update name tag with faction color
+      var facHex = FACTION_HEX[p.faction] || "#888";
       p.tagCtx.clearRect(0, 0, 128, 32);
       p.tagCtx.fillStyle = "rgba(0,0,0,0.6)";
       p.tagCtx.fillRect(0, 0, 128, 32);
-      p.tagCtx.fillStyle = "#eee";
-      p.tagCtx.font = "12px monospace";
+      // faction-colored name
+      p.tagCtx.fillStyle = facHex;
+      p.tagCtx.font = "bold 12px monospace";
       p.tagCtx.textAlign = "center";
       p.tagCtx.fillText(p.name + " (" + p.hp + ")", 64, 20);
       p.tag.material.map.needsUpdate = true;
@@ -1438,15 +1460,15 @@
       NET.units.forEach(function (u) {
         ctx.fillRect((u.x + 100) * scale - 1, (u.z + 100) * scale - 1, 2, 2);
       });
-      // remote players
-      ctx.fillStyle = "#e0584a";
+      // remote players — faction colors on minimap
       NET.players.forEach(function (p) {
         if (p.dead) return;
+        ctx.fillStyle = FACTION_HEX[p.faction] || "#888";
         ctx.fillRect((p.tx + 100) * scale - 1, (p.tz + 100) * scale - 1, 3, 3);
       });
     }
-    // self
-    ctx.fillStyle = "#e0a23c";
+    // self — own faction color, slightly bigger
+    ctx.fillStyle = FACTION_HEX[G.playerFaction] || "#e0a23c";
     ctx.fillRect((G.player.x + 100) * scale - 2, (G.player.z + 100) * scale - 2, 4, 4);
   }
 
@@ -1539,6 +1561,27 @@
     G.renderer.render(G.scene, G.camera);
   }
 
+  // ===== FACTION SELECT =====
+  var FACTIONS = {
+    ironhold: { name: "Ironhold", color: 0x4a7da8, colorHex: "#4a7da8" },
+    verdant:  { name: "Verdant",  color: 0x4aa84a, colorHex: "#4aa84a" }
+  };
+  G.playerFaction = null;
+
+  document.querySelectorAll(".factionCard").forEach(function (card) {
+    card.addEventListener("click", function () {
+      G.playerFaction = card.dataset.faction;
+      var fac = FACTIONS[G.playerFaction];
+      // show faction HUD
+      var fh = document.getElementById("factionHud");
+      fh.style.display = "block";
+      fh.innerHTML = '<span style="color:' + fac.colorHex + ';font-weight:bold">' + fac.name + '</span> | <span style="font-size:10px;opacity:.7">ฝ่ายของคุณ</span>';
+      // show class select
+      document.getElementById("factionSelect").style.display = "none";
+      document.getElementById("classSelect").style.display = "flex";
+    });
+  });
+
   // ===== CLASS SELECT =====
   document.querySelectorAll(".classCard").forEach(function (card) {
     card.addEventListener("click", function () {
@@ -1560,7 +1603,7 @@
         document.getElementById("controls").style.display = "block";
 
         init();
-        if (G.scene) netConnect(name, cls);
+        if (G.scene) netConnect(name, cls, G.playerFaction);
       } catch (e) {
         console.error("init failed:", e);
         alert("เกิดข้อผิดพลาด: " + e.message + "\nกรุณารีเฟรชหน้า");

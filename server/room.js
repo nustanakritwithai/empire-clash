@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WEAPONS, WORLD } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -52,14 +52,16 @@ export class GameRoom {
 
     if (m.t === "join") {
       const cls = CLASSES[m.class] ? m.class : "soldier";
-      const sp = WORLD.SPAWN_POINTS[Math.floor(Math.random() * WORLD.SPAWN_POINTS.length)];
+      const faction = FACTIONS[m.faction] ? m.faction : "ironhold";
+      const sp = FACTIONS[faction].spawn;
       this.players.set(ws.id, {
         ws,
         name: String(m.name || "player").slice(0, 16),
         class: cls,
+        faction,
         hp: CLASSES[cls].hp,
         maxHp: CLASSES[cls].hp,
-        x: sp.x, y: 0, z: sp.z,
+        x: sp.x + rand(-5, 5), y: 0, z: sp.z + rand(-5, 5),
         prevX: sp.x, prevZ: sp.z, // for speed/teleport check
         rx: 0, ry: 0,
         level: 1,
@@ -157,17 +159,19 @@ export class GameRoom {
       // player reports hitting another player
       const wpn = WEAPONS[m.weapon] || WEAPONS.rifle;
       // --- weapon cooldown validation (server-side) ---
-      // melee: 600ms, guns: use fireRate from client weapon definitions
       const meleeCd = 600;
       const gunCd = m.weapon === "melee" ? meleeCd : 100; // min 100ms between hits
       if (now - p.lastHitTime < gunCd) return;
-      p.lastHitTime = now;
 
       // server-side damage cap: can't exceed weapon base * 2.5 (headshot)
       const maxDmg = Math.round(wpn.dmg * 2.5);
       const dmg = clamp(+m.dmg || 0, 0, maxDmg);
       const tgt = this.players.get(m.id);
       if (!tgt || tgt.dead || m.id === ws.id || dmg <= 0) return;
+      // --- friendly fire off: same faction can't damage each other ---
+      if (tgt.faction === p.faction) return;
+      // All validation passed — set cooldown timer now
+      p.lastHitTime = now;
       const dx = (tgt.x - p.x), dz = (tgt.z - p.z);
       const distSq = dx * dx + dz * dz;
       if (distSq > wpn.range * wpn.range) return; // range check by weapon
@@ -243,10 +247,13 @@ export class GameRoom {
       }
       // respawn
       if (p.dead && now >= p.respawnAt) {
-        const sp = WORLD.SPAWN_POINTS[Math.floor(Math.random() * WORLD.SPAWN_POINTS.length)];
+        const fsp = FACTIONS[p.faction] ? FACTIONS[p.faction].spawn : { x: 0, z: 0 };
         p.dead = false;
         p.hp = p.maxHp;
-        p.x = sp.x; p.z = sp.z;
+        p.x = fsp.x + rand(-5, 5);
+        p.z = fsp.z + rand(-5, 5);
+        p.prevX = p.x;
+        p.prevZ = p.z;
         this.broadcast({
           t: "event",
           kind: "respawn",
@@ -259,10 +266,11 @@ export class GameRoom {
     for (const u of this.units) {
       const owner = this.players.get(u.owner);
       if (!owner) continue;
-      // find nearest enemy
+      // find nearest enemy (different faction)
       let nearest = null, nd = Infinity;
       for (const p of this.players.values()) {
-        if (p.id === u.owner || p.dead) continue;
+        if (p.ws.id === u.owner || p.dead) continue;
+        if (p.faction === owner.faction) continue; // same faction skip
         const dx = p.x - u.x, dz = p.z - u.z;
         const d = dx * dx + dz * dz;
         if (d < nd) { nd = d; nearest = p; }
@@ -307,6 +315,7 @@ export class GameRoom {
         id: p.ws.id,
         name: p.name,
         class: p.class,
+        faction: p.faction,
         x: Math.round(p.x * 10) / 10,
         y: Math.round(p.y * 10) / 10,
         z: Math.round(p.z * 10) / 10,

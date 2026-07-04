@@ -27,6 +27,16 @@ canvas { display:block; }
 .classCard h3 { font-size:14px; color:#e0a23c; margin-bottom:4px; }
 .classCard small { font-size:9px; opacity:.6; display:block; margin-top:4px; }
 #nameInput { padding:8px 12px; font-size:14px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.3); border-radius:4px; color:#eee; font-family:monospace; }
+#factionSelect { position:fixed; inset:0; background:rgba(10,10,20,.95); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:55; gap:20px; }
+#factionSelect h1 { font-size:24px; color:#e0a23c; letter-spacing:2px; }
+#factionSelect p { font-size:11px; opacity:.6; max-width:400px; text-align:center; }
+.factionGrid { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+.factionCard { width:200px; padding:20px; border:2px solid rgba(255,255,255,.2); border-radius:10px; background:rgba(255,255,255,.05); cursor:pointer; text-align:center; transition:all .2s; }
+.factionCard:hover { transform:translateY(-5px); }
+.factionCard h2 { font-size:18px; margin-bottom:6px; }
+.factionCard small { font-size:10px; opacity:.6; display:block; margin-top:8px; }
+.factionCard .ficon { font-size:36px; margin-bottom:8px; }
+#factionHud { position:fixed; top:38px; left:12px; font-size:11px; font-family:monospace; z-index:10; pointer-events:none; }
 #crosshair { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none; z-index:10; width:0; height:0; }
 #crosshair .chl { position:absolute; background:rgba(255,255,255,.7); box-shadow:0 0 2px rgba(0,0,0,.5); }
 #crosshair .cv { width:2px; height:8px; left:-1px; }
@@ -53,10 +63,27 @@ canvas { display:block; }
 </head>
 <body>
 
-<div id="classSelect">
+<div id="factionSelect">
   <h1>EMPIRE CLASH</h1>
+  <p>เลือกฝ่ายของคุณ — สองจักรวรรดิเพื่อชิงความเป็นใหญ่</p>
+  <input id="nameInput" placeholder="ชื่อ..." maxlength="16" value="player" style="margin-bottom:10px">
+  <div class="factionGrid">
+    <div class="factionCard" data-faction="ironhold" style="border-color:rgba(74,125,168,.5)">
+      <div class="ficon" style="color:#4a7da8">SHIELD</div>
+      <h2 style="color:#4a7da8">Ironhold</h2>
+      <small>ฝ่ายฟ้า — กำลังทหารแข็งแกร่ง ฐานที่มั่นซ้าย</small>
+    </div>
+    <div class="factionCard" data-faction="verdant" style="border-color:rgba(74,168,74,.5)">
+      <div class="ficon" style="color:#4aa84a">LEAF</div>
+      <h2 style="color:#4aa84a">Verdant</h2>
+      <small>ฝ่ายเขียว — ธรรมชาติยั่งยืน ฐานที่มั่นขวา</small>
+    </div>
+  </div>
+</div>
+
+<div id="classSelect" style="display:none">
+  <h1>เลือกอาชีพ</h1>
   <p>เลือกอาชีพแล้วเข้าสู่สมรภูมิ — สู้กันในเมือง ซื้อทหาร ยึดพื้นที่</p>
-  <input id="nameInput" placeholder="ชื่อ..." maxlength="16" value="player">
   <div class="classGrid">
     <div class="classCard" data-class="soldier">
       <h3>ทหาร</h3>
@@ -92,6 +119,7 @@ canvas { display:block; }
     <div id="playersOnline">0 คนออนไลน์</div>
   </div>
 </div>
+<div id="factionHud" style="display:none"></div>
 
 <canvas id="minimap" width="120" height="120"></canvas>
 <div id="scopeOverlay"><div class="sv"></div><div class="sl"></div><div class="sc2"></div><div class="sdot"></div></div>

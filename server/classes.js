@@ -68,6 +68,23 @@ export const UNITS = {
   }
 };
 
+export const FACTIONS = {
+  ironhold: {
+    name: "Ironhold",
+    color: 0x4a7da8,       // blue
+    colorHex: "#4a7da8",
+    spawn: { x: -80, z: 0 },
+    desc: "ฝ่ายฟ้า — กำลังทหารแข็งแกร่ง"
+  },
+  verdant: {
+    name: "Verdant",
+    color: 0x4aa84a,       // green
+    colorHex: "#4aa84a",
+    spawn: { x: 80, z: 0 },
+    desc: "ฝ่ายเขียว — ธรรมชาติยั่งยืน"
+  }
+};
+
 export const WORLD = {
   W: 200,   // world width (3D units)
   D: 200,   // world depth
