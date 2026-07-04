@@ -6,13 +6,13 @@
   var G = {
     playerName: "player",
     playerClass: "soldier",
-    player: null,
+    player: { x: 0, y: 1.6, z: 0, hp: 100, maxHp: 100, gold: 100, level: 1, kills: 0, deaths: 0, speed: 5.5, damage: 15 },
     dead: false,
     scene: null, camera: null, renderer: null,
     buildings: [], remoteMeshes: new Map(), unitMeshes: new Map(),
     keys: {}, mouseLocked: false,
     yaw: 0, pitch: 0,
-    velocity: new THREE.Vector3(),
+    velocity: null,
     lastShoot: 0,
     shootCooldown: 200,
     bullets: [],
@@ -29,6 +29,12 @@
 
   // ===== INIT =====
   function init() {
+    if (typeof THREE === "undefined") {
+      console.error("THREE.js not loaded yet!");
+      alert("Three.js ยังไม่โหลด กรุณารีเฟรชหน้า");
+      return;
+    }
+    G.velocity = new THREE.Vector3();
     G.scene = new THREE.Scene();
     G.scene.background = new THREE.Color(0x87ceeb);
     G.scene.fog = new THREE.Fog(0x87ceeb, 50, 150);
@@ -113,14 +119,8 @@
       G.scene.add(wall);
     }
 
-    // player
-    G.player = {
-      x: 0, y: 1.6, z: 0, hp: 100, maxHp: 100,
-      gold: 100, level: 1, kills: 0, deaths: 0,
-      speed: 5.5, damage: 15
-    };
-
-    G.camera.position.set(0, 1.6, 0);
+    // player stats already set by class select, just set position
+    G.camera.position.set(G.player.x, G.player.y, G.player.z);
 
     // events
     window.addEventListener("keydown", function (e) { G.keys[e.code] = true; });
@@ -445,24 +445,29 @@
   // ===== CLASS SELECT =====
   document.querySelectorAll(".classCard").forEach(function (card) {
     card.addEventListener("click", function () {
-      var cls = card.dataset.class;
-      var name = document.getElementById("nameInput").value || "player";
-      G.playerName = name;
-      G.playerClass = cls;
-      var def = CLASSES[cls];
-      G.player.maxHp = def.hp;
-      G.player.hp = def.hp;
-      G.player.speed = def.speed;
-      G.player.damage = def.damage;
+      try {
+        var cls = card.dataset.class;
+        var name = document.getElementById("nameInput").value || "player";
+        G.playerName = name;
+        G.playerClass = cls;
+        var def = CLASSES[cls];
+        G.player.maxHp = def.hp;
+        G.player.hp = def.hp;
+        G.player.speed = def.speed;
+        G.player.damage = def.damage;
 
-      document.getElementById("classSelect").style.display = "none";
-      document.getElementById("hud").style.display = "flex";
-      document.getElementById("crosshair").style.display = "block";
-      document.getElementById("shop").style.display = "flex";
-      document.getElementById("controls").style.display = "block";
+        document.getElementById("classSelect").style.display = "none";
+        document.getElementById("hud").style.display = "flex";
+        document.getElementById("crosshair").style.display = "block";
+        document.getElementById("shop").style.display = "flex";
+        document.getElementById("controls").style.display = "block";
 
-      init();
-      netConnect(name, cls);
+        init();
+        if (G.scene) netConnect(name, cls);
+      } catch (e) {
+        console.error("init failed:", e);
+        alert("เกิดข้อผิดพลาด: " + e.message + "\nกรุณารีเฟรชหน้า");
+      }
     });
   });
 
