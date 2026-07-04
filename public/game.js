@@ -13,8 +13,16 @@
     keys: {}, mouseLocked: false,
     yaw: 0, pitch: 0,
     velocity: null,
+    // weapon system
+    weaponIdx: 0,
+    weapons: {
+      rifle:  { mag: 30, reserve: 90,  reloading: false, reloadStart: 0 },
+      smg:    { mag: 50, reserve: 150, reloading: false, reloadStart: 0 },
+      sniper: { mag: 5,  reserve: 20,  reloading: false, reloadStart: 0 }
+    },
     lastShoot: 0,
-    shootCooldown: 200,
+    currentRecoil: 0,
+    hitMarker: 0,
     bullets: [],
     worldSize: 100
   };
@@ -26,6 +34,14 @@
     engineer: { hp: 100, speed: 5.2, damage: 10, color: 0x5fa05a },
     commander: { hp: 150, speed: 4.8, damage: 12, color: 0xc4452f }
   };
+
+  // ===== WEAPONS =====
+  var WEAPONS = {
+    rifle:  { name: "ไรเฟิล",   mag: 30, reserve: 90,  fireRate: 120, dmg: 18, range: 80,  spread: 0.018, recoil: 0.012, reloadTime: 1800, auto: true,  color: 0x8a8a8a, bulletSpeed: 100 },
+    smg:    { name: "ปืนกลMT",  mag: 50, reserve: 150, fireRate: 70,  dmg: 10, range: 50,  spread: 0.038, recoil: 0.009, reloadTime: 1500, auto: true,  color: 0x6a6a8a, bulletSpeed: 90 },
+    sniper: { name: "สไนเปอร์", mag: 5,  reserve: 20,  fireRate: 900, dmg: 85, range: 160, spread: 0.002, recoil: 0.055, reloadTime: 2600, auto: false, color: 0x3a3a3a, bulletSpeed: 200 }
+  };
+  var WEAPON_KEYS = ["rifle", "smg", "sniper"];
 
   // ===== INIT =====
   function init() {
@@ -242,9 +258,13 @@
     layoutBtn.addEventListener("click", function () { toggleLayoutMode(); });
     document.body.appendChild(layoutBtn);
 
-    // keyboard hotkey V to toggle camera
+    // keyboard hotkey V to toggle camera, R to reload, 1/2/3 weapon switch
     window.addEventListener("keydown", function (e) {
       if (e.code === "KeyV") toggleCamera();
+      if (e.code === "KeyR") startReload();
+      if (e.code === "Digit1") switchWeapon(0);
+      if (e.code === "Digit2") switchWeapon(1);
+      if (e.code === "Digit3") switchWeapon(2);
     });
 
     // ===== TOUCH CONTROLS =====
@@ -403,23 +423,20 @@
       shootBtn.style.background = "rgba(196,69,47,0.65)";
     }, { passive: false });
 
-    // auto-fire while holding
+    // auto-fire while holding (use weapon fireRate, not fixed 150ms)
     var autoFireInterval = setInterval(function () {
-      if (G.touch.shooting) shoot();
-    }, 150);
+      if (G.touch.shooting && currentWeapon().auto) shoot();
+    }, 50);
 
     // ===== RELOAD (Q4 — right-bottom) =====
     reloadBtn.addEventListener("touchstart", function (e) {
       if (layoutMode) return;
       e.preventDefault();
-      G.touch.reloading = true;
+      startReload();
       reloadBtn.style.background = "rgba(224,162,60,0.9)";
-      if (typeof toast === "function") toast("รีโหลด...");
       setTimeout(function () {
-        G.touch.reloading = false;
         reloadBtn.style.background = "rgba(224,162,60,0.6)";
-        if (typeof toast === "function") toast("รีโหลดเสร็จ");
-      }, 1500);
+      }, currentWeapon().reloadTime);
     }, { passive: false });
 
     // ===== SPRINT (Q4 — right-bottom) =====
@@ -459,6 +476,25 @@
         crouchBtn.style.background = "rgba(90,60,40,0.8)";
       }
     }, { passive: false });
+
+    // ===== WEAPON SWITCH BUTTONS (top-center) =====
+    var wpnBar = document.createElement("div");
+    wpnBar.id = "weaponBar";
+    wpnBar.style.cssText = "position:fixed;top:50px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:15";
+    document.body.appendChild(wpnBar);
+    WEAPON_KEYS.forEach(function (wk, i) {
+      var wb = document.createElement("div");
+      wb.id = "wpnBtn" + i;
+      wb.style.cssText = "padding:5px 12px;background:rgba(20,20,40,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:#aaa;font-family:monospace;font-size:10px;cursor:pointer;touch-action:none";
+      wb.textContent = (i + 1) + " " + WEAPONS[wk].name;
+      wb.addEventListener("touchstart", function (e) {
+        e.preventDefault();
+        switchWeapon(i);
+      }, { passive: false });
+      wb.addEventListener("click", function () { switchWeapon(i); });
+      wpnBar.appendChild(wb);
+      registerLayoutBtn(wb, "wpn" + i);
+    });
 
     // ===== LOOK / JUMP (Q4) =====
     lookZone.addEventListener("touchstart", function (e) {
@@ -697,9 +733,93 @@
   }
 
   // ===== SHOOTING =====
+  // ===== WEAPON HELPERS =====
+  function currentWeaponKey() { return WEAPON_KEYS[G.weaponIdx] || "rifle"; }
+  function currentWeapon() { return WEAPONS[currentWeaponKey()]; }
+  function currentAmmo() { return G.weapons[currentWeaponKey()]; }
+  function isMoving() {
+    var k = G.keys;
+    return k["KeyW"] || k["KeyA"] || k["KeyS"] || k["KeyD"] || (G.touch && G.touch.moving);
+  }
+
+  function switchWeapon(idx) {
+    if (idx < 0 || idx >= WEAPON_KEYS.length) return;
+    if (G.weaponIdx === idx) return;
+    G.weaponIdx = idx;
+    G.currentRecoil = 0;
+    // cancel reload
+    var ammo = currentAmmo();
+    ammo.reloading = false;
+    // update gun model color
+    if (G.gunGroup) {
+      G.gunGroup.children.forEach(function (c) {
+        if (c.material && c.material.color) c.material.color.setHex(currentWeapon().color);
+      });
+    }
+    toast(currentWeapon().name);
+    updateAmmoDisplay();
+  }
+
+  function startReload() {
+    var w = currentWeapon();
+    var ammo = currentAmmo();
+    if (ammo.reloading) return;
+    if (ammo.mag >= w.mag) return;
+    if (ammo.reserve <= 0) return;
+    ammo.reloading = true;
+    ammo.reloadStart = Date.now();
+    toast("รีโหลด " + w.name + "...");
+  }
+
+  function finishReload() {
+    var w = currentWeapon();
+    var ammo = currentAmmo();
+    if (!ammo.reloading) return;
+    var needed = w.mag - ammo.mag;
+    var take = Math.min(needed, ammo.reserve);
+    ammo.mag += take;
+    ammo.reserve -= take;
+    ammo.reloading = false;
+    updateAmmoDisplay();
+  }
+
+  function updateAmmoDisplay() {
+    var el = document.getElementById("ammoDisplay");
+    if (!el) return;
+    var ammo = currentAmmo();
+    var w = currentWeapon();
+    if (ammo.reloading) {
+      el.textContent = "รีโหลด...";
+      el.style.color = "#e0a23c";
+    } else {
+      el.textContent = ammo.mag + " / " + ammo.reserve;
+      el.style.color = ammo.mag === 0 ? "#e0584a" : "#eee";
+    }
+  }
+
+  function updateReload() {
+    var ammo = currentAmmo();
+    if (!ammo.reloading) return;
+    var w = currentWeapon();
+    if (Date.now() - ammo.reloadStart >= w.reloadTime) finishReload();
+  }
+
+  // ===== SHOOT =====
   function shoot() {
-    if (G.dead || Date.now() - G.lastShoot < G.shootCooldown) return;
+    if (G.dead) return;
+    var w = currentWeapon();
+    var ammo = currentAmmo();
+    if (ammo.reloading) return;
+    if (Date.now() - G.lastShoot < w.fireRate) return;
+    if (ammo.mag <= 0) {
+      // auto reload on empty
+      startReload();
+      return;
+    }
+
     G.lastShoot = Date.now();
+    ammo.mag--;
+    updateAmmoDisplay();
 
     // muzzle flash
     if (G.muzzleFlash) {
@@ -717,22 +837,50 @@
     var camDir = new THREE.Vector3();
     G.camera.getWorldDirection(camDir);
 
-    // check remote players (cone check)
-    var hitId = null, hitDist = Infinity;
+    // apply spread (more if moving)
+    var moveSpread = isMoving() ? w.spread * 2.5 : w.spread;
+    var recoilAdd = G.currentRecoil;
+    var totalSpread = moveSpread + recoilAdd;
+    camDir.x += (Math.random() - 0.5) * totalSpread;
+    camDir.y += (Math.random() - 0.5) * totalSpread;
+    camDir.z += (Math.random() - 0.5) * totalSpread;
+    camDir.normalize();
+
+    // accumulate recoil (recovers over time in animate)
+    G.currentRecoil += w.recoil;
+    if (G.currentRecoil > w.spread * 8) G.currentRecoil = w.spread * 8;
+    // kick camera up slightly
+    G.pitch += w.recoil * 0.5;
+
+    // check remote players (cone check + distance)
+    var hitId = null, hitDist = Infinity, hitHead = false;
     if (typeof NET !== "undefined" && NET.players.size > 0) {
       NET.players.forEach(function (p, id) {
         if (p.dead) return;
         var dx = p.tx - G.player.x, dz = p.tz - G.player.z;
         var d = Math.sqrt(dx * dx + dz * dz);
-        if (d > 60) return;
+        if (d > w.range) return;
         var toTarget = new THREE.Vector3(dx, 0, dz).normalize();
         var dot = camDir.dot(toTarget);
-        if (dot > 0.95 && d < hitDist) { hitId = id; hitDist = d; }
+        // tighter cone for sniper, wider for smg
+        var coneThreshold = w.spread < 0.005 ? 0.998 : 0.94;
+        if (dot > coneThreshold && d < hitDist) {
+          hitId = id; hitDist = d;
+          // headshot: aiming up and target close-ish
+          if (camDir.y < -0.15 && d < w.range * 0.6) hitHead = true;
+        }
       });
     }
 
     if (hitId) {
-      netSend({ t: "hit", id: hitId, dmg: G.damage || 15 });
+      var dmg = w.dmg;
+      // damage falloff: half damage at max range
+      var falloff = 1 - (hitDist / w.range) * 0.5;
+      dmg = Math.round(dmg * falloff);
+      if (hitHead) dmg = Math.round(dmg * 2.2);
+      netSend({ t: "hit", id: hitId, dmg: dmg, weapon: currentWeaponKey(), headshot: hitHead });
+      // hit marker
+      G.hitMarker = Date.now();
       // impact effect at hit location
       if (typeof NET !== "undefined" && NET.players.get(hitId)) {
         var hp = NET.players.get(hitId);
@@ -744,26 +892,28 @@
     // send shoot visual to server
     netSend({
       t: "shoot",
+      weapon: currentWeaponKey(),
       x: G.player.x, y: G.player.y, z: G.player.z,
       dx: camDir.x, dy: camDir.y, dz: camDir.z
     });
 
     // spawn visible bullet (tracer)
     var startPos = new THREE.Vector3(G.player.x, G.player.y - 0.1, G.player.z);
-    spawnBullet(startPos, camDir);
+    spawnBullet(startPos, camDir, w.bulletSpeed);
 
     flashCrosshair();
   }
 
   // ===== BULLET SYSTEM =====
-  function spawnBullet(start, dir) {
+  function spawnBullet(start, dir, speed) {
+    speed = speed || 100;
     var bulletMat = new THREE.MeshBasicMaterial({ color: 0xffdd44 });
     var bullet = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), bulletMat);
     bullet.position.copy(start);
     bullet.userData = {
-      vx: dir.x * 80,
-      vy: dir.y * 80,
-      vz: dir.z * 80,
+      vx: dir.x * speed,
+      vy: dir.y * speed,
+      vz: dir.z * speed,
       life: 1.0,
       maxLife: 1.0
     };
@@ -1044,7 +1194,9 @@
       var m = NET.events.shift();
       var d = m.data || {};
       if (m.kind === "kill") {
-        addKillFeed(d.killerName + " ฆ่า " + d.victimName);
+        var killText = d.killerName + " ฆ่า " + d.victimName;
+        if (d.headshot) killText = "HEADSHOT! " + killText;
+        addKillFeed(killText);
         if (d.victim === NET.id) {
           G.dead = true;
           showOverlay("คุณถูกฆ่าโดย " + d.killerName + " — รอเกิดใหม่...");
@@ -1138,6 +1290,39 @@
     updateUnits(dt);
     updateBullets(dt);
     processEvents();
+    updateReload();
+
+    // recoil recovery
+    if (G.currentRecoil > 0) {
+      G.currentRecoil *= 0.92;
+      if (G.currentRecoil < 0.001) G.currentRecoil = 0;
+    }
+
+    // hit marker display (show for 200ms after hit)
+    var hm = document.getElementById("hitMarker");
+    if (hm) {
+      if (G.hitMarker && Date.now() - G.hitMarker < 200) {
+        hm.style.opacity = "1";
+      } else {
+        hm.style.opacity = "0";
+      }
+    }
+
+    // weapon bar highlight
+    for (var wi = 0; wi < 3; wi++) {
+      var btn = document.getElementById("wpnBtn" + wi);
+      if (btn) {
+        if (wi === G.weaponIdx) {
+          btn.style.borderColor = "#e0a23c";
+          btn.style.color = "#e0a23c";
+          btn.style.background = "rgba(224,162,60,0.2)";
+        } else {
+          btn.style.borderColor = "rgba(255,255,255,0.2)";
+          btn.style.color = "#aaa";
+          btn.style.background = "rgba(20,20,40,0.7)";
+        }
+      }
+    }
 
     // camera follows player
     G.camera.rotation.order = "YXZ";

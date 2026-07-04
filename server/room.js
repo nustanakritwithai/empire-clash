@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WORLD } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, WORLD } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -88,23 +88,27 @@ export class GameRoom {
       }, ws.id);
     } else if (m.t === "hit") {
       // player reports hitting another player
-      const dmg = clamp(+m.dmg || 0, 0, 60);
+      const wpn = WEAPONS[m.weapon] || WEAPONS.rifle;
+      // server-side damage cap: can't exceed weapon base * 2.5 (headshot)
+      const maxDmg = Math.round(wpn.dmg * 2.5);
+      const dmg = clamp(+m.dmg || 0, 0, maxDmg);
       const tgt = this.players.get(m.id);
       if (!tgt || tgt.dead || m.id === ws.id || dmg <= 0) return;
       const dx = (tgt.x - p.x), dz = (tgt.z - p.z);
-      if (dx * dx + dz * dz > 900 * 900) return; // range check
+      const distSq = dx * dx + dz * dz;
+      if (distSq > wpn.range * wpn.range) return; // range check by weapon
       tgt.hp -= dmg;
       if (tgt.hp <= 0) {
         tgt.dead = true;
         tgt.deaths++;
         tgt.respawnAt = Date.now() + RESPAWN_MS;
         p.kills++;
-        p.score += 10;
-        p.gold += 20;
+        p.score += m.headshot ? 20 : 10;
+        p.gold += m.headshot ? 35 : 20;
         this.broadcast({
           t: "event",
           kind: "kill",
-          data: { killer: ws.id, killerName: p.name, victim: m.id, victimName: tgt.name }
+          data: { killer: ws.id, killerName: p.name, victim: m.id, victimName: tgt.name, headshot: !!m.headshot }
         });
       }
     } else if (m.t === "buyUnit") {
