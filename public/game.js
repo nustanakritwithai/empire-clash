@@ -23,6 +23,9 @@
     lastShoot: 0,
     currentRecoil: 0,
     hitMarker: 0,
+    zooming: false,
+    baseFov: 75,
+    zoomFov: 35,
     bullets: [],
     worldSize: 100
   };
@@ -39,7 +42,7 @@
   var WEAPONS = {
     rifle:  { name: "ไรเฟิล",   mag: 30, reserve: 90,  fireRate: 120, dmg: 18, range: 80,  spread: 0.018, recoil: 0.012, reloadTime: 1800, auto: true,  color: 0x8a8a8a, bulletSpeed: 100 },
     smg:    { name: "ปืนกลMT",  mag: 50, reserve: 150, fireRate: 70,  dmg: 10, range: 50,  spread: 0.038, recoil: 0.009, reloadTime: 1500, auto: true,  color: 0x6a6a8a, bulletSpeed: 90 },
-    sniper: { name: "สไนเปอร์", mag: 5,  reserve: 20,  fireRate: 900, dmg: 85, range: 160, spread: 0.002, recoil: 0.055, reloadTime: 2600, auto: false, color: 0x3a3a3a, bulletSpeed: 200 }
+    sniper: { name: "สไนเปอร์", mag: 5,  reserve: 20,  fireRate: 900, dmg: 85, range: 160, spread: 0.002, recoil: 0.055, reloadTime: 2600, auto: false, color: 0x3a3a3a, bulletSpeed: 200, zoomFov: 15 }
   };
   var WEAPON_KEYS = ["rifle", "smg", "sniper"];
 
@@ -214,8 +217,9 @@
     window.addEventListener("keyup", function (e) { G.keys[e.code] = false; });
     document.addEventListener("mousemove", function (e) {
       if (!G.mouseLocked) return;
-      G.yaw -= e.movementX * 0.002;
-      G.pitch -= e.movementY * 0.002;
+      var sens = G.zooming ? 0.001 : 0.002;
+      G.yaw -= e.movementX * sens;
+      G.pitch -= e.movementY * sens;
       G.pitch = Math.max(-1.5, Math.min(1.5, G.pitch));
     });
     document.addEventListener("click", function () {
@@ -224,6 +228,10 @@
         return;
       }
       shoot();
+    });
+    document.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      if (G.mouseLocked) toggleZoom();
     });
     document.addEventListener("pointerlockchange", function () {
       G.mouseLocked = (document.pointerLockElement === G.renderer.domElement);
@@ -496,6 +504,21 @@
       registerLayoutBtn(wb, "wpn" + i);
     });
 
+    // ===== ZOOM / AIM BUTTON (right side, above reload) =====
+    var zoomBtn = document.createElement("div");
+    zoomBtn.id = "touchZoom";
+    zoomBtn.style.cssText = "position:fixed;right:90px;bottom:90px;width:56px;height:56px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
+    zoomBtn.textContent = "เล็ง";
+    document.body.appendChild(zoomBtn);
+    registerLayoutBtn(zoomBtn, "zoom");
+    zoomBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
+      e.preventDefault();
+      toggleZoom();
+      zoomBtn.style.background = G.zooming ? "rgba(74,157,74,0.8)" : "rgba(74,125,168,0.5)";
+    }, { passive: false });
+    zoomBtn.addEventListener("click", function () { toggleZoom(); });
+
     // ===== LOOK / JUMP (Q4) =====
     lookZone.addEventListener("touchstart", function (e) {
       e.preventDefault();
@@ -519,8 +542,9 @@
         if (t.identifier === G.touch.lookId) {
           var dx = t.clientX - G.touch.lookX;
           var dy = t.clientY - G.touch.lookY;
-          G.yaw -= dx * 0.005;
-          G.pitch -= dy * 0.005;
+          var lookSens = G.zooming ? 0.0025 : 0.005;
+          G.yaw -= dx * lookSens;
+          G.pitch -= dy * lookSens;
           G.pitch = Math.max(-1.5, Math.min(1.5, G.pitch));
           G.touch.lookX = t.clientX;
           G.touch.lookY = t.clientY;
@@ -747,6 +771,8 @@
     if (G.weaponIdx === idx) return;
     G.weaponIdx = idx;
     G.currentRecoil = 0;
+    // cancel zoom on weapon switch
+    if (G.zooming) toggleZoom();
     // cancel reload
     var ammo = currentAmmo();
     ammo.reloading = false;
@@ -758,6 +784,16 @@
     }
     toast(currentWeapon().name);
     updateAmmoDisplay();
+  }
+
+  function toggleZoom() {
+    if (G.dead) return;
+    G.zooming = !G.zooming;
+    var targetFov = G.zooming ? (currentWeapon().zoomFov || G.zoomFov) : G.baseFov;
+    G.camera.fov = targetFov;
+    G.camera.updateProjectionMatrix();
+    // hide gun model when zooming (especially sniper)
+    if (G.gunGroup) G.gunGroup.visible = !G.zooming;
   }
 
   function startReload() {
@@ -837,8 +873,10 @@
     var camDir = new THREE.Vector3();
     G.camera.getWorldDirection(camDir);
 
-    // apply spread (more if moving)
+    // apply spread (more if moving, less if zooming)
     var moveSpread = isMoving() ? w.spread * 2.5 : w.spread;
+    var zoomMult = G.zooming ? 0.3 : 1.0;
+    moveSpread *= zoomMult;
     var recoilAdd = G.currentRecoil;
     var totalSpread = moveSpread + recoilAdd;
     camDir.x += (Math.random() - 0.5) * totalSpread;
