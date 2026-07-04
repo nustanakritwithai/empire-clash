@@ -568,9 +568,9 @@
       }
     }, { passive: false });
 
-    // hide crosshair on mobile
+    // crosshair shows on both mobile + desktop (dynamic)
     var ch = document.getElementById("crosshair");
-    if (ch) ch.style.display = "none";
+    if (ch) ch.style.display = "block";
 
     // update controls hint
     var ctrl = document.getElementById("controls");
@@ -794,6 +794,37 @@
     G.camera.updateProjectionMatrix();
     // hide gun model when zooming (especially sniper)
     if (G.gunGroup) G.gunGroup.visible = !G.zooming;
+    // toggle scope overlay + crosshair
+    var scope = document.getElementById("scopeOverlay");
+    var ch = document.getElementById("crosshair");
+    if (G.zooming) {
+      if (scope) scope.style.display = "block";
+      if (ch) ch.style.display = "none";
+    } else {
+      if (scope) scope.style.display = "none";
+      if (ch) ch.style.display = "block";
+    }
+  }
+
+  // Dynamic crosshair: 4 lines spread based on current weapon spread + movement + recoil
+  function updateCrosshair() {
+    if (G.dead || G.zooming) return;
+    var w = currentWeapon();
+    var baseGap = 6; // minimum gap px
+    var moveSpread = isMoving() ? w.spread * 2.5 : w.spread;
+    var zoomMult = G.zooming ? 0.3 : 1.0;
+    var totalSpread = (moveSpread * zoomMult) + G.currentRecoil;
+    // map spread to pixel gap (scale factor)
+    var gap = baseGap + totalSpread * 4000;
+    if (gap > 60) gap = 60;
+    var top = document.getElementById("chTop");
+    var bot = document.getElementById("chBot");
+    var left = document.getElementById("chLeft");
+    var right = document.getElementById("chRight");
+    if (top) top.style.top = (-gap - 8) + "px";
+    if (bot) bot.style.top = gap + "px";
+    if (left) left.style.left = (-gap - 8) + "px";
+    if (right) right.style.left = gap + "px";
   }
 
   function startReload() {
@@ -1345,6 +1376,9 @@
         hm.style.opacity = "0";
       }
     }
+
+    // dynamic crosshair (gap reflects spread + recoil)
+    updateCrosshair();
 
     // weapon bar highlight
     for (var wi = 0; wi < 3; wi++) {
