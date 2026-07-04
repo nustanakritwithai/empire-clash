@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -51,7 +51,7 @@ export class GameRoom {
     if (!m || typeof m.t !== "string") return;
 
     if (m.t === "join") {
-      const cls = CLASSES[m.class] ? m.class : "soldier";
+      const cls = resolveClass(m.class); // backward-compatible class resolution, fallback infantry
       const faction = FACTIONS[m.faction] ? m.faction : "ironhold";
       const sp = FACTIONS[faction].spawn;
       this.players.set(ws.id, {

@@ -1,38 +1,60 @@
-// classes.js — อาชีพและทหาร
+// classes.js — faction-war MVP class definitions
+// Old class ids map: soldier -> infantry, merchant -> worker, engineer -> worker, commander -> commander
+const CLASS_COMPAT = {
+  soldier: "infantry",
+  merchant: "worker",
+  engineer: "worker",
+  commander: "commander"
+};
+
 export const CLASSES = {
-  soldier: {
-    name: "ทหาร",
-    hp: 120,
+  infantry: {
+    name: "ทหารราบ",
+    nameEn: "Infantry",
+    hp: 130,
     speed: 5.5,
-    damage: 15,
+    damage: 18,
     income: 2,
-    desc: "ฮึดสู้ ตีใกล้แข็งแรง เงินเก็บช้า"
+    desc: "แนวหน้า HP สูง ต่อสู้ระยะประชิดแข็งแกร่ง"
   },
-  merchant: {
-    name: "พ่อค้า",
+  archer: {
+    name: "พลธนู",
+    nameEn: "Archer",
     hp: 80,
+    speed: 5.2,
+    damage: 15,
+    income: 3,
+    desc: "สนับสนุนระยะไกล HP ต่ำ ยิงแม่นแต่เปราะ"
+  },
+  worker: {
+    name: "คนงาน",
+    nameEn: "Worker",
+    hp: 100,
     speed: 5.0,
     damage: 8,
     income: 6,
-    desc: "เก็บเงินเร็ว ซื้อทหารได้เยอะ แต่อ่อน"
-  },
-  engineer: {
-    name: "ช่าง",
-    hp: 100,
-    speed: 5.2,
-    damage: 10,
-    income: 4,
-    desc: "สร้างสิ่งก่อสร้างได้ กลางๆ"
+    desc: "เก็บทรัพยากร เศรษฐกิจฝ่าย ต่อสู้อ่อน"
+    // TODO Phase 7: gathering (wood/stone), deposit at warehouse
   },
   commander: {
     name: "แม่ทัพ",
-    hp: 150,
+    nameEn: "Commander",
+    hp: 140,
     speed: 4.8,
-    damage: 12,
+    damage: 14,
     income: 3,
-    desc: "แข็งที่สุด บังคับทหารได้เยอะ แต่ช้า"
+    desc: "วางแผน สั่งการ สร้างกำแพง/ธงรวมพล HP กลาง-สูง"
+    // TODO Phase 8: build walls, rally flags using faction resources
   }
 };
+
+// Resolve class id with backward-compatible mapping
+export function resolveClass(raw) {
+  if (!raw) return "infantry";
+  if (CLASSES[raw]) return raw;
+  if (CLASS_COMPAT[raw]) return CLASS_COMPAT[raw];
+  return "infantry";
+}
 
 export const WEAPONS = {
   rifle:  { dmg: 18, range: 80 },

@@ -17,7 +17,7 @@ export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 /*
 Client -> Server
-  { t:"join", name, class:"soldier"|"merchant"|"engineer"|"commander" }
+  { t:"join", name, class:"infantry"|"archer"|"worker"|"commander", faction:"ironhold"|"verdant" }
   { t:"pos", x, y, z, rx, ry, hp, anim }
   { t:"shoot", x, y, z, dx, dy, dz }
   { t:"hit", id, dmg }

@@ -5,7 +5,7 @@
   // ===== GLOBAL STATE =====
   var G = {
     playerName: "player",
-    playerClass: "soldier",
+    playerClass: "infantry",
     player: { x: 0, y: 1.6, z: 0, hp: 100, maxHp: 100, gold: 100, level: 1, kills: 0, deaths: 0, speed: 5.5, damage: 15 },
     dead: false,
     scene: null, camera: null, renderer: null,
@@ -36,11 +36,14 @@
   };
   window.G = G;
 
+  // ===== CLASSES (client-side, mirrors server) =====
+  // Old ids: soldier -> infantry, merchant -> worker, engineer -> worker, commander -> commander
+  var CLASS_COMPAT = { soldier: "infantry", merchant: "worker", engineer: "worker", commander: "commander" };
   var CLASSES = {
-    soldier: { hp: 120, speed: 5.5, damage: 15, color: 0x4a7da8 },
-    merchant: { hp: 80, speed: 5.0, damage: 8, color: 0xe0a23c },
-    engineer: { hp: 100, speed: 5.2, damage: 10, color: 0x5fa05a },
-    commander: { hp: 150, speed: 4.8, damage: 12, color: 0xc4452f }
+    infantry: { hp: 130, speed: 5.5, damage: 18, color: 0x4a7da8, name: "ทหารราบ" },
+    archer:   { hp: 80,  speed: 5.2, damage: 15, color: 0x6fa84a, name: "พลธนู" },
+    worker:   { hp: 100, speed: 5.0, damage: 8,  color: 0xe0a23c, name: "คนงาน" }, // TODO Phase 7: gathering
+    commander:{ hp: 140, speed: 4.8, damage: 14, color: 0xc4452f, name: "แม่ทัพ" }  // TODO Phase 8: building
   };
 
   // ===== WEAPONS =====
@@ -1586,7 +1589,10 @@
   document.querySelectorAll(".classCard").forEach(function (card) {
     card.addEventListener("click", function () {
       try {
-        var cls = card.dataset.class;
+        var rawClass = card.dataset.class;
+        // backward-compatible mapping
+        var cls = CLASS_COMPAT[rawClass] || rawClass;
+        if (!CLASSES[cls]) cls = "infantry"; // fallback
         var name = document.getElementById("nameInput").value || "player";
         G.playerName = name;
         G.playerClass = cls;
