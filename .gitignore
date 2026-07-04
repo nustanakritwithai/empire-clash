@@ -27,3 +27,4 @@ Thumbs.db
 test_ws.mjs
 test_movement.mjs
 test_stability.mjs
+test_security.mjs

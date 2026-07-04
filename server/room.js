@@ -7,6 +7,14 @@ const TICK_RATE = 1000 / TICK_MS;
 const RESPAWN_MS = 5000;
 const INCOME_INTERVAL_MS = 3000; // เงินเข้าทุก 3 วินาที
 
+// --- Server authority constants ---
+const MAX_POS_RATE = 30;        // max pos packets per second per player
+const MAX_SHOOT_RATE = 15;     // max shoot packets per second per player
+const POS_WINDOW_MS = 1000;    // rate limit window
+const TELEPORT_THRESHOLD = 8;  // max units moved per packet (safety margin)
+const SPEED_TOLERANCE = 1.5;   // allow client to be slightly faster than class speed
+const MAX_Y = 50;              // max height (anti-fly)
+
 const rand = (a, b) => a + Math.random() * (b - a);
 
 export class GameRoom {
@@ -52,6 +60,7 @@ export class GameRoom {
         hp: CLASSES[cls].hp,
         maxHp: CLASSES[cls].hp,
         x: sp.x, y: 0, z: sp.z,
+        prevX: sp.x, prevZ: sp.z, // for speed/teleport check
         rx: 0, ry: 0,
         level: 1,
         gold: 100,
@@ -63,23 +72,74 @@ export class GameRoom {
         respawnAt: 0,
         lastIncome: Date.now(),
         last: Date.now(),
+        lastPosTime: 0,
+        posCount: 0,
+        posWindowStart: Date.now(),
+        shootCount: 0,
+        shootWindowStart: Date.now(),
+        lastHitTime: 0,
+        lastShootTime: 0,
         anim: "idle"
       });
       return;
     }
 
     const p = this.players.get(ws.id);
-    if (!p || p.dead) return;
+    if (!p) return;
+    // dead players cannot send movement
+    if (p.dead) return;
     p.last = Date.now();
 
+    const now = Date.now();
+
     if (m.t === "pos") {
-      p.x = clamp(+m.x || p.x, -WORLD.W, WORLD.W);
-      p.y = clamp(+m.y || 0, 0, 50);
-      p.z = clamp(+m.z || p.z, -WORLD.D, WORLD.D);
+      // --- rate limit: max N pos packets per second ---
+      if (now - p.posWindowStart > POS_WINDOW_MS) {
+        p.posWindowStart = now;
+        p.posCount = 0;
+      }
+      p.posCount++;
+      if (p.posCount > MAX_POS_RATE) return; // drop packet
+
+      const newX = clamp(+m.x || p.x, -WORLD.W, WORLD.W);
+      const newY = clamp(+m.y || 0, 0, MAX_Y);
+      const newZ = clamp(+m.z || p.z, -WORLD.D, WORLD.D);
+
+      // --- teleport rejection: check distance moved since last position ---
+      const dx = newX - p.x;
+      const dz = newZ - p.z;
+      const distMoved = Math.sqrt(dx * dx + dz * dz);
+      const timeDelta = (now - (p.lastPosTime || now)) / 1000;
+      p.lastPosTime = now;
+
+      // allow first packet (no previous position)
+      if (p.prevX !== undefined && timeDelta > 0) {
+        const classSpeed = CLASSES[p.class].speed;
+        const maxSpeed = (classSpeed + SPEED_TOLERANCE) * Math.max(timeDelta, 0.1);
+        // hard teleport threshold: if moved more than threshold in one tick, reject
+        if (distMoved > TELEPORT_THRESHOLD && distMoved > maxSpeed) {
+          // reject: keep old position, don't update
+          return;
+        }
+      }
+
+      p.prevX = p.x;
+      p.prevZ = p.z;
+      p.x = newX;
+      p.y = newY;
+      p.z = newZ;
       p.rx = +m.rx || 0;
       p.ry = +m.ry || 0;
       p.anim = m.anim || "idle";
     } else if (m.t === "shoot") {
+      // --- rate limit shoots ---
+      if (now - p.shootWindowStart > POS_WINDOW_MS) {
+        p.shootWindowStart = now;
+        p.shootCount = 0;
+      }
+      p.shootCount++;
+      if (p.shootCount > MAX_SHOOT_RATE) return;
+
       // relay shoot event to all other players for visual
       this.broadcast({
         t: "event",
@@ -96,6 +156,13 @@ export class GameRoom {
     } else if (m.t === "hit") {
       // player reports hitting another player
       const wpn = WEAPONS[m.weapon] || WEAPONS.rifle;
+      // --- weapon cooldown validation (server-side) ---
+      // melee: 600ms, guns: use fireRate from client weapon definitions
+      const meleeCd = 600;
+      const gunCd = m.weapon === "melee" ? meleeCd : 100; // min 100ms between hits
+      if (now - p.lastHitTime < gunCd) return;
+      p.lastHitTime = now;
+
       // server-side damage cap: can't exceed weapon base * 2.5 (headshot)
       const maxDmg = Math.round(wpn.dmg * 2.5);
       const dmg = clamp(+m.dmg || 0, 0, maxDmg);
