@@ -154,7 +154,150 @@
       });
     });
 
+    // ===== TOUCH CONTROLS =====
+    initTouchControls();
+
     animate();
+  }
+
+  // ===== TOUCH CONTROLS (mobile) =====
+  function initTouchControls() {
+    G.touch = { joyActive: false, joyX: 0, joyY: 0, joyId: null, lookId: null, lookX: 0, lookY: 0 };
+    var isMobile = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+
+    if (!isMobile) return; // desktop uses keyboard+mouse
+
+    // create joystick UI
+    var joy = document.createElement("div");
+    joy.id = "touchJoy";
+    joy.style.cssText = "position:fixed;left:20px;bottom:20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,0.1);border:2px solid rgba(255,255,255,0.3);z-index:20;touch-action:none";
+    var nub = document.createElement("div");
+    nub.id = "touchNub";
+    nub.style.cssText = "position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(255,255,255,0.3);border:1px solid rgba(255,255,255,0.4)";
+    joy.appendChild(nub);
+    document.body.appendChild(joy);
+
+    // shoot button
+    var shootBtn = document.createElement("div");
+    shootBtn.id = "touchShoot";
+    shootBtn.style.cssText = "position:fixed;right:20px;bottom:80px;width:72px;height:72px;border-radius:50%;background:rgba(196,69,47,0.7);border:2px solid rgba(255,255,255,0.4);z-index:20;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-family:monospace;touch-action:none";
+    shootBtn.textContent = "ยิง";
+    document.body.appendChild(shootBtn);
+
+    // jump/sprint button
+    var sprintBtn = document.createElement("div");
+    sprintBtn.id = "touchSprint";
+    sprintBtn.style.cssText = "position:fixed;right:100px;bottom:20px;width:56px;height:56px;border-radius:50%;background:rgba(74,125,168,0.6);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
+    sprintBtn.textContent = "วิ่ง";
+    document.body.appendChild(sprintBtn);
+
+    // joystick touch
+    joy.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      var t = e.changedTouches[0];
+      G.touch.joyActive = true;
+      G.touch.joyId = t.identifier;
+      updateJoystick(t.clientX, t.clientY);
+    }, { passive: false });
+
+    joy.addEventListener("touchmove", function (e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.identifier === G.touch.joyId) updateJoystick(t.clientX, t.clientY);
+      }
+    }, { passive: false });
+
+    joy.addEventListener("touchend", function (e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === G.touch.joyId) {
+          G.touch.joyActive = false;
+          G.touch.joyId = null;
+          G.touch.joyX = 0;
+          G.touch.joyY = 0;
+          nub.style.left = "50%";
+          nub.style.top = "50%";
+        }
+      }
+    }, { passive: false });
+
+    function updateJoystick(tx, ty) {
+      var rect = joy.getBoundingClientRect();
+      var cx = rect.left + rect.width / 2;
+      var cy = rect.top + rect.height / 2;
+      var dx = tx - cx;
+      var dy = ty - cy;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      var maxR = rect.width / 2;
+      if (d > maxR) { dx = (dx / d) * maxR; dy = (dy / d) * maxR; }
+      G.touch.joyX = dx / maxR;
+      G.touch.joyY = dy / maxR;
+      nub.style.left = (50 + (dx / maxR) * 40) + "%";
+      nub.style.top = (50 + (dy / maxR) * 40) + "%";
+    }
+
+    // look (drag on right half of screen)
+    var canvas = G.renderer.domElement;
+    canvas.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.clientX > window.innerWidth / 2 && G.touch.lookId === null) {
+          G.touch.lookId = t.identifier;
+          G.touch.lookX = t.clientX;
+          G.touch.lookY = t.clientY;
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener("touchmove", function (e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.identifier === G.touch.lookId) {
+          var dx = t.clientX - G.touch.lookX;
+          var dy = t.clientY - G.touch.lookY;
+          G.yaw -= dx * 0.005;
+          G.pitch -= dy * 0.005;
+          G.pitch = Math.max(-1.5, Math.min(1.5, G.pitch));
+          G.touch.lookX = t.clientX;
+          G.touch.lookY = t.clientY;
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener("touchend", function (e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === G.touch.lookId) {
+          G.touch.lookId = null;
+        }
+      }
+    }, { passive: false });
+
+    // shoot button
+    shootBtn.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      shoot();
+    }, { passive: false });
+
+    // sprint button
+    var sprinting = false;
+    sprintBtn.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      sprinting = !sprinting;
+      sprintBtn.style.background = sprinting ? "rgba(74,157,74,0.8)" : "rgba(74,125,168,0.6)";
+      G.touch.sprinting = sprinting;
+    }, { passive: false });
+
+    // hide crosshair on mobile (using center dot instead)
+    var ch = document.getElementById("crosshair");
+    if (ch) ch.style.display = "none";
+
+    // hide controls hint
+    var ctrl = document.getElementById("controls");
+    if (ctrl) ctrl.textContent = "จอยซ้ายเดิน | ลากขวามอง | ปุ่มยิง | ปุ่มวิ่ง";
   }
 
   // ===== SHOOTING =====
@@ -209,14 +352,25 @@
   function updateMovement(dt) {
     if (G.dead) return;
     var speed = G.player.speed || 5.5;
+    if (G.touch && G.touch.sprinting) speed *= 1.6;
     var fwd = new THREE.Vector3(-Math.sin(G.yaw), 0, -Math.cos(G.yaw));
     var right = new THREE.Vector3(Math.cos(G.yaw), 0, -Math.sin(G.yaw));
     var move = new THREE.Vector3();
 
+    // keyboard
     if (G.keys["KeyW"]) move.add(fwd);
     if (G.keys["KeyS"]) move.sub(fwd);
     if (G.keys["KeyA"]) move.sub(right);
     if (G.keys["KeyD"]) move.add(right);
+
+    // touch joystick
+    if (G.touch && G.touch.joyActive) {
+      // joyY negative = forward (up on screen = forward)
+      if (G.touch.joyY < -0.1) move.add(fwd.clone().multiplyScalar(-G.touch.joyY));
+      if (G.touch.joyY > 0.1) move.sub(fwd.clone().multiplyScalar(G.touch.joyY));
+      if (G.touch.joyX < -0.1) move.sub(right.clone().multiplyScalar(-G.touch.joyX));
+      if (G.touch.joyX > 0.1) move.add(right.clone().multiplyScalar(G.touch.joyX));
+    }
 
     if (move.length() > 0) {
       move.normalize().multiplyScalar(speed * dt);
