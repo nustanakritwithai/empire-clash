@@ -343,6 +343,7 @@
 
     // ===== JOYSTICK (Q1) =====
     joy.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
       e.preventDefault();
       var t = e.changedTouches[0];
       G.touch.joyActive = true;
@@ -388,6 +389,7 @@
 
     // ===== SHOOT (Q2 — hold = auto-fire) =====
     shootBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
       e.preventDefault();
       G.touch.shooting = true;
       shoot();
@@ -395,6 +397,7 @@
     }, { passive: false });
 
     shootBtn.addEventListener("touchend", function (e) {
+      if (layoutMode) return;
       e.preventDefault();
       G.touch.shooting = false;
       shootBtn.style.background = "rgba(196,69,47,0.65)";
@@ -407,6 +410,7 @@
 
     // ===== RELOAD (Q4 — right-bottom) =====
     reloadBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
       e.preventDefault();
       G.touch.reloading = true;
       reloadBtn.style.background = "rgba(224,162,60,0.9)";
@@ -421,6 +425,7 @@
     // ===== SPRINT (Q4 — right-bottom) =====
     var sprinting = false;
     sprintBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
       e.preventDefault();
       sprinting = !sprinting;
       sprintBtn.style.background = sprinting ? "rgba(74,157,74,0.8)" : "rgba(74,125,168,0.5)";
@@ -431,6 +436,7 @@
     // 1 tap = crouch (stays), 2nd tap = prone (stays), 3rd tap = stand
     var crouchState = 0; // 0=stand, 1=crouch, 2=prone
     crouchBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return; // skip game action in layout mode
       e.preventDefault();
       crouchState = (crouchState + 1) % 3;
       if (crouchState === 0) {
