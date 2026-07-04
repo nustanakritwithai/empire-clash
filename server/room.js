@@ -559,7 +559,8 @@ export class GameRoom {
       resourceNodes: this.snapshotResourceNodes(),
       factionResources: { ...this.factionResources },
       warehouses: WAREHOUSES,
-      buildings: this.snapshotBuildings()
+      buildings: this.snapshotBuildings(),
+      rallyFlags: { ...this.rallyFlags }
     });
   }
 
