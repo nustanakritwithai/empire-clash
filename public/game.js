@@ -127,7 +127,7 @@
     G.playerMesh = new THREE.Group();
     // body
     var body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.35, 1.0, 4, 8),
+      new THREE.CylinderGeometry(0.35, 0.35, 1.2, 8),
       new THREE.MeshLambertMaterial({ color: pColor })
     );
     body.position.y = 0.8;
@@ -467,7 +467,7 @@
       if (p.tx == null) return;
       // lerp
       if (!p.mesh) {
-        var geo = new THREE.CapsuleGeometry(0.4, 1.2, 4, 8);
+        var geo = new THREE.CylinderGeometry(0.4, 0.4, 1.4, 8);
         var mat = new THREE.MeshLambertMaterial({ color: CLASSES[p.class] ? CLASSES[p.class].color : 0x888888 });
         p.mesh = new THREE.Mesh(geo, mat);
         p.mesh.castShadow = true;
@@ -519,7 +519,7 @@
         var color = u.type === "archer" ? 0x4a9d4a : u.type === "cavalry" ? 0x9d4a4a : 0x4a4a9d;
         var size = u.type === "cavalry" ? 0.8 : 0.5;
         mesh = new THREE.Mesh(
-          new THREE.CapsuleGeometry(size, 0.8, 4, 6),
+          new THREE.CylinderGeometry(size, size, 1.0, 6),
           new THREE.MeshLambertMaterial({ color: color })
         );
         mesh.castShadow = true;
