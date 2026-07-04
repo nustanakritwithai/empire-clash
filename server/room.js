@@ -86,6 +86,13 @@ export class GameRoom {
         kind: "shoot",
         data: { from: ws.id, x: m.x, y: m.y, z: m.z, dx: m.dx, dy: m.dy, dz: m.dz }
       }, ws.id);
+    } else if (m.t === "melee") {
+      // relay melee swing to other players for visual
+      this.broadcast({
+        t: "event",
+        kind: "melee",
+        data: { from: ws.id, x: m.x, y: m.y, z: m.z, dx: m.dx, dz: m.dz }
+      }, ws.id);
     } else if (m.t === "hit") {
       // player reports hitting another player
       const wpn = WEAPONS[m.weapon] || WEAPONS.rifle;

@@ -37,7 +37,8 @@ export const CLASSES = {
 export const WEAPONS = {
   rifle:  { dmg: 18, range: 80 },
   smg:    { dmg: 10, range: 50 },
-  sniper: { dmg: 85, range: 160 }
+  sniper: { dmg: 85, range: 160 },
+  melee:  { dmg: 35, range: 5 }
 };
 
 export const UNITS = {

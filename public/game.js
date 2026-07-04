@@ -23,6 +23,11 @@
     lastShoot: 0,
     currentRecoil: 0,
     hitMarker: 0,
+    lastMelee: 0,
+    meleeCooldown: 600, // ms between melee attacks
+    meleeRange: 4.5, // world units
+    meleeDamage: 35,
+    meleeAnim: 0, // timestamp of last melee swing for animation
     zooming: false,
     baseFov: 75,
     zoomFov: 35,
@@ -273,6 +278,7 @@
       if (e.code === "Digit1") switchWeapon(0);
       if (e.code === "Digit2") switchWeapon(1);
       if (e.code === "Digit3") switchWeapon(2);
+      if (e.code === "KeyF" || e.code === "KeyQ") melee();
     });
 
     // ===== TOUCH CONTROLS =====
@@ -518,6 +524,22 @@
       zoomBtn.style.background = G.zooming ? "rgba(74,157,74,0.8)" : "rgba(74,125,168,0.5)";
     }, { passive: false });
     zoomBtn.addEventListener("click", function () { toggleZoom(); });
+
+    // ===== MELEE / KNIFE BUTTON (left side, above shoot) =====
+    var meleeBtn = document.createElement("div");
+    meleeBtn.id = "touchMelee";
+    meleeBtn.style.cssText = "position:fixed;left:110px;top:70px;width:60px;height:60px;border-radius:50%;background:rgba(180,80,80,0.6);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
+    meleeBtn.textContent = "มีด";
+    document.body.appendChild(meleeBtn);
+    registerLayoutBtn(meleeBtn, "melee");
+    meleeBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
+      e.preventDefault();
+      melee();
+      meleeBtn.style.background = "rgba(180,80,80,0.9)";
+      setTimeout(function () { meleeBtn.style.background = "rgba(180,80,80,0.6)"; }, 200);
+    }, { passive: false });
+    meleeBtn.addEventListener("click", function () { melee(); });
 
     // ===== LOOK / JUMP (Q4) =====
     lookZone.addEventListener("touchstart", function (e) {
@@ -973,6 +995,86 @@
     flashCrosshair();
   }
 
+  // ===== MELEE ATTACK =====
+  function melee() {
+    if (G.dead) return;
+    if (Date.now() - G.lastMelee < G.meleeCooldown) return;
+    G.lastMelee = Date.now();
+    G.meleeAnim = Date.now();
+
+    // gun swing animation (slash)
+    if (G.gunGroup) {
+      G.gunGroup.rotation.z = -1.2;
+      G.gunGroup.position.z = -0.2;
+      G.gunGroup.position.y = 0.15;
+      setTimeout(function () {
+        if (G.gunGroup) {
+          G.gunGroup.rotation.z = 0;
+          G.gunGroup.position.z = G.zooming ? -0.5 : -0.5;
+          G.gunGroup.position.y = 0;
+        }
+      }, 250);
+    }
+
+    // get camera direction (horizontal only for melee)
+    var camDir = new THREE.Vector3();
+    G.camera.getWorldDirection(camDir);
+    camDir.y = 0;
+    camDir.normalize();
+
+    // check remote players within melee range + in front (120 degree cone)
+    var hitId = null, hitDist = Infinity;
+    if (typeof NET !== "undefined" && NET.players.size > 0) {
+      NET.players.forEach(function (p, id) {
+        if (p.dead) return;
+        var dx = p.tx - G.player.x, dz = p.tz - G.player.z;
+        var d = Math.sqrt(dx * dx + dz * dz);
+        if (d > G.meleeRange) return;
+        var toTarget = new THREE.Vector3(dx, 0, dz).normalize();
+        var dot = camDir.dot(toTarget);
+        if (dot > 0.5 && d < hitDist) { // 0.5 = ~60 degrees each side = 120 cone
+          hitId = id; hitDist = d;
+        }
+      });
+    }
+
+    if (hitId) {
+      // melee does fixed damage, more from behind (backstab)
+      var toTarget = new THREE.Vector3(
+        NET.players.get(hitId).tx - G.player.x,
+        0,
+        NET.players.get(hitId).tz - G.player.z
+      ).normalize();
+      // check if target is facing away (backstab = 1.5x damage)
+      var targetFacing = NET.players.get(hitId).facing || toTarget;
+      var backstab = toTarget.dot(targetFacing) > 0.3;
+      var dmg = backstab ? Math.round(G.meleeDamage * 1.5) : G.meleeDamage;
+
+      netSend({ t: "hit", id: hitId, dmg: dmg, weapon: "melee", headshot: false });
+      G.hitMarker = Date.now();
+      toast(backstab ? "แทงข้างหลัง! " + dmg + " dmg" : "โจมตี " + dmg + " dmg");
+
+      // impact effect at hit location
+      if (NET.players.get(hitId)) {
+        spawnImpact(
+          new THREE.Vector3(NET.players.get(hitId).tx, NET.players.get(hitId).ty + 1, NET.players.get(hitId).tz),
+          new THREE.Vector3(0, 1, 0)
+        );
+      }
+    } else {
+      toast("ฟัน! (ไม่โดน)");
+    }
+
+    // send melee visual event to other players
+    if (typeof netSend === "function" && NET.connected) {
+      netSend({
+        t: "melee",
+        x: G.player.x, y: G.player.y, z: G.player.z,
+        dx: camDir.x, dy: 0, dz: camDir.z
+      });
+    }
+  }
+
   // ===== BULLET SYSTEM =====
   function spawnBullet(start, dir, speed) {
     speed = speed || 100;
@@ -1278,6 +1380,8 @@
         }
       } else if (m.kind === "shoot") {
         // could draw bullet trail
+      } else if (m.kind === "melee") {
+        // could show enemy melee swing animation
       }
     }
   }
