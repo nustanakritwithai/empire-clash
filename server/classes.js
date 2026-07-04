@@ -179,3 +179,28 @@ export const WAREHOUSES = {
   ironhold: { x: -85, z: 10, radius: 12 },
   verdant:  { x: 85,  z: 10, radius: 12 }
 };
+
+// Building config — Phase 8 Commander building
+export const BUILDINGS = {
+  wooden_wall: {
+    name: "กำแพงไม้",
+    nameEn: "Wooden Wall",
+    cost: { wood: 10, stone: 0 },
+    hp: 100,
+    size: { w: 3, h: 3, d: 1 },
+    buildDistance: 8,    // max distance from Commander to place
+    buildCooldown: 500  // ms between builds
+  },
+  rally_flag: {
+    name: "ธงรวมพล",
+    nameEn: "Rally Flag",
+    cost: { wood: 5, stone: 5 },
+    hp: 80,
+    size: { w: 1, h: 6, d: 1 },
+    buildDistance: 8,
+    buildCooldown: 1000,
+    onePerFaction: true  // only one Rally Flag per faction
+  }
+};
+
+export const MAP_BOUNDS = { minX: -95, maxX: 95, minZ: -95, maxZ: 95 };

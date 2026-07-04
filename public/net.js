@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   var WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
-  var NET = { ws: null, id: null, connected: false, players: new Map(), units: [], events: [], capturePoints: [], factionScores: { ironhold: 0, verdant: 0 }, roundWinner: null, roundResetAt: 0, resourceNodes: [], factionResources: { ironhold: { wood: 0, stone: 0 }, verdant: { wood: 0, stone: 0 } }, warehouses: {} };
+  var NET = { ws: null, id: null, connected: false, players: new Map(), units: [], events: [], capturePoints: [], factionScores: { ironhold: 0, verdant: 0 }, roundWinner: null, roundResetAt: 0, resourceNodes: [], factionResources: { ironhold: { wood: 0, stone: 0 }, verdant: { wood: 0, stone: 0 } }, warehouses: {}, buildings: [] };
   window.NET = NET;
 
   function netSend(o) {
@@ -68,6 +68,7 @@
       NET.resourceNodes = m.resourceNodes || [];
       NET.factionResources = m.factionResources || { ironhold: { wood: 0, stone: 0 }, verdant: { wood: 0, stone: 0 } };
       NET.warehouses = m.warehouses || {};
+      NET.buildings = m.buildings || [];
     } else if (m.t === "event") {
       NET.events.push(m);
       if (NET.events.length > 20) NET.events.shift();

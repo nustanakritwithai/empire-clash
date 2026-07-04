@@ -382,6 +382,9 @@
       if (e.code === "Digit3") switchWeapon(2);
       if (e.code === "KeyF" || e.code === "KeyQ") melee();
       if (e.code === "KeyE") tryInteract();
+      if (e.code === "KeyB") tryBuild("wooden_wall");
+      if (e.code === "KeyG") tryBuild("rally_flag");
+      if (e.code === "KeyH") tryAttackBuilding();
     });
 
     // ===== TOUCH CONTROLS =====
@@ -1518,6 +1521,14 @@
       } else if (m.kind === "roundReset") {
         addKillFeed("รอบใหม่เริ่มแล้ว!");
         if (typeof toast === "function") toast("รอบใหม่เริ่มแล้ว!");
+      } else if (m.kind === "build") {
+        addKillFeed(d.faction + " สร้าง " + (d.type === "wooden_wall" ? "กำแพงไม้" : "ธงรวมพล"));
+      } else if (m.kind === "buildingDestroyed") {
+        addKillFeed((d.type === "wooden_wall" ? "กำแพง" : "ธง") + " ฝ่าย " + d.faction + " ถูกทำลาย");
+      } else if (m.kind === "buildReject") {
+        var reason = d.reason || "สร้างไม่ได้";
+        addKillFeed("สร้างไม่ได้: " + reason);
+        if (typeof toast === "function") toast("สร้างไม่ได้: " + reason);
       }
     }
   }
@@ -1675,6 +1686,8 @@
     updateScoreHud();
     updateInteractionPrompt();
     updateResourceHud();
+    updateBuildings();
+    updateBuildMenu();
 
     G.renderer.render(G.scene, G.camera);
   }
@@ -1877,6 +1890,112 @@
       '<div style="font-size:10px;color:' + (myFac === "ironhold" ? "#4a7da8" : "#4aa84a") + '">ฝ่าย: ไม้ ' + (fr.wood || 0) + ' | หิน ' + (fr.stone || 0) + '</div>';
   }
 
+  // ===== BUILDING SYSTEM (Phase 8) =====
+  G.buildingMeshes = {}; // id -> mesh
+
+  function updateBuildings() {
+    if (typeof NET === "undefined" || !NET.buildings) return;
+    var seen = {};
+    NET.buildings.forEach(function (b) {
+      seen[b.id] = true;
+      if (!G.buildingMeshes[b.id]) {
+        // create mesh
+        var mesh;
+        if (b.type === "wooden_wall") {
+          mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 3, 0.5),
+            new THREE.MeshLambertMaterial({ color: 0x8b6914 })
+          );
+          mesh.position.set(b.x, 1.5, b.z);
+          mesh.rotation.y = b.rot || 0;
+          mesh.castShadow = true;
+          G.scene.add(mesh);
+        } else if (b.type === "rally_flag") {
+          var grp = new THREE.Group();
+          var pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.15, 0.15, 6, 6),
+            new THREE.MeshLambertMaterial({ color: 0x8a8a8a })
+          );
+          pole.position.set(0, 3, 0);
+          grp.add(pole);
+          var flag = new THREE.Mesh(
+            new THREE.PlaneGeometry(2, 1.5),
+            new THREE.MeshLambertMaterial({ color: b.faction === "ironhold" ? 0x4a7da8 : 0x4aa84a, side: THREE.DoubleSide })
+          );
+          flag.position.set(1, 4.5, 0);
+          grp.add(flag);
+          grp.position.set(b.x, 0, b.z);
+          G.scene.add(grp);
+          mesh = grp;
+        }
+        if (mesh) {
+          G.buildingMeshes[b.id] = mesh;
+        }
+      }
+    });
+    // remove destroyed buildings
+    Object.keys(G.buildingMeshes).forEach(function (id) {
+      if (!seen[id]) {
+        G.scene.remove(G.buildingMeshes[id]);
+        delete G.buildingMeshes[id];
+      }
+    });
+  }
+
+  function updateBuildMenu() {
+    var menu = document.getElementById("buildMenu");
+    if (!menu) return;
+    if (G.playerClass !== "commander") {
+      menu.style.display = "none";
+      return;
+    }
+    menu.style.display = "flex";
+    var fr = (typeof NET !== "undefined" && NET.factionResources) ? NET.factionResources[G.playerFaction] || { wood: 0, stone: 0 } : { wood: 0, stone: 0 };
+    var wallBtn = document.getElementById("buildWall");
+    var flagBtn = document.getElementById("buildFlag");
+    if (wallBtn) {
+      wallBtn.style.opacity = fr.wood >= 10 ? "1" : "0.4";
+      wallBtn.textContent = "กำแพงไม้ (10 ไม้) ฝ่าย: " + fr.wood;
+    }
+    if (flagBtn) {
+      flagBtn.style.opacity = (fr.wood >= 5 && fr.stone >= 5) ? "1" : "0.4";
+      flagBtn.textContent = "ธงรวมพล (5ไม้ 5หิน) ฝ่าย: " + fr.wood + "/" + fr.stone;
+    }
+  }
+
+  // Build placement: B = wall, G = rally flag
+  // Place at player's current position + small offset in facing direction
+  function tryBuild(buildingType) {
+    if (G.playerClass !== "commander") {
+      toast("ต้องเป็นแม่ทัพเท่านั้น");
+      return;
+    }
+    // place in front of player (2 units in facing direction)
+    var dir = new THREE.Vector3();
+    G.camera.getWorldDirection(dir);
+    dir.y = 0;
+    dir.normalize();
+    var bx = G.player.x + dir.x * 3;
+    var bz = G.player.z + dir.z * 3;
+    netSend({ t: "build", buildingType: buildingType, x: bx, z: bz, rot: G.yaw || 0 });
+  }
+
+  // Attack nearby enemy building with melee
+  function tryAttackBuilding() {
+    if (typeof NET === "undefined" || !NET.buildings) return;
+    var near = null, nearDist = Infinity;
+    NET.buildings.forEach(function (b) {
+      if (b.faction === G.playerFaction) return; // skip own faction
+      var dx = b.x - G.player.x, dz = b.z - G.player.z;
+      var d = Math.sqrt(dx * dx + dz * dz);
+      if (d < 10 && d < nearDist) { near = b; nearDist = d; }
+    });
+    if (near) {
+      netSend({ t: "attackBuilding", id: near.id, dmg: 20 });
+      toast("โจมตี " + (near.type === "wooden_wall" ? "กำแพง" : "ธง") + " (-20 HP, " + near.hp + " remaining)");
+    }
+  }
+
   // ===== FACTION SELECT =====
   var FACTIONS = {
     ironhold: { name: "Ironhold", color: 0x4a7da8, colorHex: "#4a7da8" },
@@ -1929,6 +2048,12 @@
       }
     });
   });
+
+  // Build menu click handlers
+  var bw = document.getElementById("buildWall");
+  if (bw) bw.addEventListener("click", function () { tryBuild("wooden_wall"); });
+  var bf = document.getElementById("buildFlag");
+  if (bf) bf.addEventListener("click", function () { tryBuild("rally_flag"); });
 
   window.toast = function (text) {
     var div = document.createElement("div");

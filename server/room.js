@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS, ROUND_CONFIG, RESOURCE_CONFIG, RESOURCE_NODES, WAREHOUSES } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS, ROUND_CONFIG, RESOURCE_CONFIG, RESOURCE_NODES, WAREHOUSES, BUILDINGS, MAP_BOUNDS } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -36,6 +36,10 @@ export class GameRoom {
       verdant:  { ...RESOURCE_CONFIG.initialFactionResources }
     };
     this.lastNodeRegen = Date.now();
+    // Phase 8: building state
+    this.buildings = []; // {id, type, faction, x, z, rot, hp, maxHp}
+    this.rallyFlags = { ironhold: null, verdant: null }; // building id or null
+    this._bid = 1;
     this.timer = setInterval(() => this.update(), TICK_MS);
     this.lastTick = Date.now();
   }
@@ -266,6 +270,95 @@ export class GameRoom {
       if (totalDeposited > 0) {
         p.score += totalDeposited; // contribution score
       }
+    } else if (m.t === "build") {
+      // Phase 8: Commander builds walls and rally flags
+      const rejectBuild = (reason) => {
+        try { ws.send(encode({ t: "event", kind: "buildReject", data: { reason } })); } catch {}
+        return;
+      };
+      if (p.class !== "commander") return rejectBuild("Commander required");
+      const def = BUILDINGS[m.buildingType];
+      if (!def) return rejectBuild("Unknown building");
+      if (now - (p.lastBuildTime || 0) < def.buildCooldown) return rejectBuild("Build cooldown");
+      // validate placement distance
+      const bx = +m.x, bz = +m.z;
+      if (isNaN(bx) || isNaN(bz)) return rejectBuild("Invalid placement");
+      const bdx = bx - p.x, bdz = bz - p.z;
+      if (bdx * bdx + bdz * bdz > def.buildDistance * def.buildDistance) return rejectBuild("Too far from Commander");
+      // validate map bounds
+      if (bx < MAP_BOUNDS.minX || bx > MAP_BOUNDS.maxX || bz < MAP_BOUNDS.minZ || bz > MAP_BOUNDS.maxZ) return rejectBuild("Outside map bounds");
+      // validate not overlapping capture point
+      for (const cp of this.capturePoints) {
+        const cpdx = bx - cp.x, cpdz = bz - cp.z;
+        if (cpdx * cpdx + cpdz * cpdz < (cp.radius + 2) * (cp.radius + 2)) return rejectBuild("Too close to capture point");
+      }
+      // validate not overlapping warehouse
+      for (const fac of Object.keys(WAREHOUSES)) {
+        const wh = WAREHOUSES[fac];
+        const whdx = bx - wh.x, whdz = bz - wh.z;
+        if (whdx * whdx + whdz * whdz < (wh.radius + 2) * (wh.radius + 2)) return rejectBuild("Too close to warehouse");
+      }
+      // validate not overlapping resource nodes
+      for (const node of this.resourceNodes) {
+        const ndx = bx - node.x, ndz = bz - node.z;
+        if (ndx * ndx + ndz * ndz < 16) return rejectBuild("Too close to resource node"); // 4 unit buffer
+      }
+      // validate not overlapping existing buildings
+      for (const b of this.buildings) {
+        const bldx = bx - b.x, bldz = bz - b.z;
+        if (bldx * bldx + bldz * bldz < 9) return rejectBuild("Too close to another building"); // 3 unit buffer
+      }
+      // one Rally Flag per faction
+      if (def.onePerFaction && this.rallyFlags[p.faction]) return rejectBuild("Rally Flag already exists");
+      // check faction resources
+      const fr = this.factionResources[p.faction];
+      if (!fr || fr.wood < (def.cost.wood || 0) || fr.stone < (def.cost.stone || 0)) return rejectBuild("Not enough faction resources");
+      // all validation passed — build!
+      p.lastBuildTime = now;
+      fr.wood -= (def.cost.wood || 0);
+      fr.stone -= (def.cost.stone || 0);
+      const building = {
+        id: this._bid++,
+        type: m.buildingType,
+        faction: p.faction,
+        x: bx,
+        z: bz,
+        rot: +m.rot || 0,
+        hp: def.hp,
+        maxHp: def.hp
+      };
+      this.buildings.push(building);
+      if (def.onePerFaction) {
+        this.rallyFlags[p.faction] = building.id;
+      }
+      this.broadcast({
+        t: "event",
+        kind: "build",
+        data: { id: building.id, type: building.type, faction: building.faction, x: building.x, z: building.z, hp: building.hp }
+      });
+    } else if (m.t === "attackBuilding") {
+      // Phase 8: enemy attacks building
+      const bld = this.buildings.find(b => b.id === m.id);
+      if (!bld) return;
+      if (bld.faction === p.faction) return; // friendly fire blocked
+      const bdef = BUILDINGS[bld.type];
+      if (!bdef) return;
+      const bdx = bld.x - p.x, bdz = bld.z - p.z;
+      const distSq = bdx * bdx + bdz * bdz;
+      if (distSq > 100) return; // max 10 units to attack building
+      const dmg = clamp(+m.dmg || 10, 1, 50);
+      bld.hp -= dmg;
+      if (bld.hp <= 0) {
+        this.buildings = this.buildings.filter(b => b.id !== bld.id);
+        if (this.rallyFlags[bld.faction] === bld.id) {
+          this.rallyFlags[bld.faction] = null;
+        }
+        this.broadcast({
+          t: "event",
+          kind: "buildingDestroyed",
+          data: { id: bld.id, type: bld.type, faction: bld.faction }
+        });
+      }
     }
   }
 
@@ -297,13 +390,24 @@ export class GameRoom {
           });
         }
       }
-      // respawn
+      // respawn — at Rally Flag if alive, otherwise faction base
       if (p.dead && now >= p.respawnAt) {
-        const fsp = FACTIONS[p.faction] ? FACTIONS[p.faction].spawn : { x: 0, z: 0 };
+        let spawnX, spawnZ;
+        // check if faction has alive rally flag
+        const rfId = this.rallyFlags[p.faction];
+        const rf = rfId ? this.buildings.find(b => b.id === rfId) : null;
+        if (rf) {
+          spawnX = rf.x + rand(-3, 3);
+          spawnZ = rf.z + rand(-3, 3);
+        } else {
+          const fsp = FACTIONS[p.faction] ? FACTIONS[p.faction].spawn : { x: 0, z: 0 };
+          spawnX = fsp.x + rand(-5, 5);
+          spawnZ = fsp.z + rand(-5, 5);
+        }
         p.dead = false;
         p.hp = p.maxHp;
-        p.x = fsp.x + rand(-5, 5);
-        p.z = fsp.z + rand(-5, 5);
+        p.x = spawnX;
+        p.z = spawnZ;
         p.prevX = p.x;
         p.prevZ = p.z;
         this.broadcast({
@@ -454,7 +558,8 @@ export class GameRoom {
       roundResetAt: this.roundResetAt,
       resourceNodes: this.snapshotResourceNodes(),
       factionResources: { ...this.factionResources },
-      warehouses: WAREHOUSES
+      warehouses: WAREHOUSES,
+      buildings: this.snapshotBuildings()
     });
   }
 
@@ -521,6 +626,19 @@ export class GameRoom {
     }));
   }
 
+  snapshotBuildings() {
+    return this.buildings.map(b => ({
+      id: b.id,
+      type: b.type,
+      faction: b.faction,
+      x: b.x,
+      z: b.z,
+      rot: b.rot,
+      hp: Math.round(b.hp),
+      maxHp: b.maxHp
+    }));
+  }
+
   resetRound() {
     // reset scores
     this.factionScores = { ironhold: ROUND_CONFIG.initialScore, verdant: ROUND_CONFIG.initialScore };
@@ -536,6 +654,9 @@ export class GameRoom {
     }
     // clear temporary units
     this.units = [];
+    // Phase 8: clear buildings and rally flags on round reset
+    this.buildings = [];
+    this.rallyFlags = { ironhold: null, verdant: null };
     // Phase 7: reset resource nodes, faction resources, and player inventories on round reset
     this.resourceNodes = RESOURCE_NODES.map(n => ({ ...n }));
     this.factionResources = {
