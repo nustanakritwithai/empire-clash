@@ -31,3 +31,4 @@ test_security.mjs
 test_faction.mjs
 test_faction_debug.mjs
 test_phase4.mjs
+test_phase5.mjs

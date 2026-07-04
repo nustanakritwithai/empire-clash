@@ -119,3 +119,19 @@ export const WORLD = {
     { x: -80, z: -80 }
   ]
 };
+
+// Capture point configuration — config-driven for Phase 6 scoring reuse
+export const CAPTURE_POINTS = [
+  {
+    id: "central_fort",
+    name: "Central Fort",
+    x: 0,
+    z: 0,
+    radius: 15,          // capture radius in world units
+    captureRate: 5,      // progress per second (reaches 100 in 20s with 1 player)
+    owner: null,         // faction that currently owns it
+    capturing: null,     // faction currently capturing
+    progress: 0,          // 0-100, positive = toward capturing faction
+    contested: false      // true when equal players from both factions inside
+  }
+];

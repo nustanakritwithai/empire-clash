@@ -146,6 +146,33 @@
       G.scene.add(wall);
     }
 
+    // ===== CAPTURE POINT: Central Fort flag at world center =====
+    G.captureFlags = {}; // id -> {pole, flag, ring}
+    var cpPole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3, 0.3, 8, 8),
+      new THREE.MeshLambertMaterial({ color: 0x8a8a8a })
+    );
+    cpPole.position.set(0, 4, 0);
+    cpPole.castShadow = true;
+    G.scene.add(cpPole);
+
+    var cpFlag = new THREE.Mesh(
+      new THREE.PlaneGeometry(3, 2),
+      new THREE.MeshLambertMaterial({ color: 0x888888, side: THREE.DoubleSide })
+    );
+    cpFlag.position.set(1.5, 6.5, 0);
+    G.scene.add(cpFlag);
+
+    // capture radius ring on ground
+    var ringGeo = new THREE.RingGeometry(14.5, 15, 32);
+    var ringMat = new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.4 });
+    var cpRing = new THREE.Mesh(ringGeo, ringMat);
+    cpRing.rotation.x = -Math.PI / 2;
+    cpRing.position.set(0, 0.2, 0);
+    G.scene.add(cpRing);
+
+    G.captureFlags["central_fort"] = { pole: cpPole, flag: cpFlag, ring: cpRing };
+
     // player stats already set by class select, just set position
     G.camera.position.set(G.player.x, G.player.y, G.player.z);
 
@@ -1407,6 +1434,10 @@
         // could draw bullet trail
       } else if (m.kind === "melee") {
         // could show enemy melee swing animation
+      } else if (m.kind === "capture") {
+        var capText = d.name + " ถูกยึดโดย " + (d.owner === "ironhold" ? "Ironhold" : "Verdant");
+        addKillFeed(capText);
+        if (typeof toast === "function") toast(capText);
       }
     }
   }
@@ -1560,8 +1591,71 @@
 
     updateHUD();
     drawMinimap();
+    updateCaptureFlags();
 
     G.renderer.render(G.scene, G.camera);
+  }
+
+  // ===== CAPTURE POINT RENDERING + HUD =====
+  var CP_COLORS = {
+    ironhold: 0x4a7da8,
+    verdant:  0x4aa84a,
+    neutral:  0x888888,
+    contested: 0xe0a23c
+  };
+  var CP_HEX = {
+    ironhold: "#4a7da8",
+    verdant:  "#4aa84a",
+    neutral:  "#888888",
+    contested: "#e0a23c"
+  };
+
+  function updateCaptureFlags() {
+    if (typeof NET === "undefined" || !NET.capturePoints) return;
+    var hud = document.getElementById("captureHud");
+    NET.capturePoints.forEach(function (cp) {
+      // update 3D flag color
+      var flagObj = G.captureFlags ? G.captureFlags[cp.id] : null;
+      if (flagObj) {
+        var flagColor;
+        if (cp.contested) flagColor = CP_COLORS.contested;
+        else if (cp.owner) flagColor = CP_COLORS[cp.owner] || CP_COLORS.neutral;
+        else if (cp.capturing) flagColor = CP_COLORS[cp.capturing] || CP_COLORS.neutral;
+        else flagColor = CP_COLORS.neutral;
+
+        if (flagObj.flag.material.color.getHex() !== flagColor) {
+          flagObj.flag.material.color.setHex(flagColor);
+        }
+        if (flagObj.ring.material.color.getHex() !== flagColor) {
+          flagObj.ring.material.color.setHex(flagColor);
+        }
+      }
+
+      // update HUD
+      if (hud) {
+        hud.style.display = "block";
+        var ownerColor = cp.owner ? CP_HEX[cp.owner] : CP_HEX.neutral;
+        var ownerText = cp.owner ? (cp.owner === "ironhold" ? "Ironhold" : "Verdant") : "Neutral";
+        var statusText = "";
+        var statusColor = "#eee";
+        if (cp.contested) {
+          statusText = "CONTESTED";
+          statusColor = CP_HEX.contested;
+        } else if (cp.capturing) {
+          statusText = "Capturing: " + (cp.capturing === "ironhold" ? "Ironhold" : "Verdant");
+          statusColor = CP_HEX[cp.capturing];
+        } else {
+          statusText = "No contest";
+        }
+
+        var barColor = cp.capturing ? CP_HEX[cp.capturing] : ownerColor;
+        hud.innerHTML =
+          '<div style="font-size:12px;font-weight:bold;color:' + ownerColor + '">' + cp.name + ': ' + ownerText + '</div>' +
+          '<div style="width:120px;height:8px;border:1px solid rgba(255,255,255,.3);border-radius:3px;background:rgba(0,0,0,.5);margin:3px auto;overflow:hidden">' +
+          '<div style="height:100%;width:' + cp.progress + '%;background:' + barColor + ';transition:width .3s"></div></div>' +
+          '<div style="font-size:10px;color:' + statusColor + '">' + statusText + ' (' + cp.progress + '%)</div>';
+      }
+    });
   }
 
   // ===== FACTION SELECT =====

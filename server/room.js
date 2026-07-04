@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -22,6 +22,8 @@ export class GameRoom {
     this.players = new Map(); // id -> {ws,name,class,hp,x,y,z,rx,ry,level,gold,units,score,lastIncome,last}
     this.units = [];          // shared AI units
     this._uid = 1;
+    // deep copy capture points so we don't mutate the config export
+    this.capturePoints = CAPTURE_POINTS.map(cp => ({ ...cp }));
     this.timer = setInterval(() => this.update(), TICK_MS);
     this.lastTick = Date.now();
   }
@@ -300,11 +302,61 @@ export class GameRoom {
       }
     }
 
-    // broadcast snapshot
+    // ===== CAPTURE POINTS =====
+    for (const cp of this.capturePoints) {
+      // count alive players inside radius by faction
+      let ironCount = 0, verdantCount = 0;
+      for (const p of this.players.values()) {
+        if (p.dead) continue;
+        const dx = p.x - cp.x, dz = p.z - cp.z;
+        if (dx * dx + dz * dz <= cp.radius * cp.radius) {
+          if (p.faction === "ironhold") ironCount++;
+          else if (p.faction === "verdant") verdantCount++;
+        }
+      }
+
+      // determine capture state
+      if (ironCount > verdantCount) {
+        cp.contested = false;
+        cp.capturing = "ironhold";
+        cp.progress = clamp(cp.progress + cp.captureRate * dt, 0, 100);
+      } else if (verdantCount > ironCount) {
+        cp.contested = false;
+        cp.capturing = "verdant";
+        cp.progress = clamp(cp.progress + cp.captureRate * dt, 0, 100);
+      } else if (ironCount > 0 && verdantCount > 0 && ironCount === verdantCount) {
+        // equal players from both factions = contested, pause progress
+        cp.contested = true;
+        cp.capturing = null;
+      } else {
+        // no players inside or both zero = pause, no contest
+        cp.contested = false;
+        cp.capturing = null;
+      }
+
+      // check if capture complete
+      if (cp.progress >= 100 && cp.capturing) {
+        const oldOwner = cp.owner;
+        cp.owner = cp.capturing;
+        cp.progress = 0; // reset progress after capture
+        cp.capturing = null;
+        if (oldOwner !== cp.owner) {
+          console.log("[Capture] Central Fort captured by", cp.owner, "(was", oldOwner + ")");
+          this.broadcast({
+            t: "event",
+            kind: "capture",
+            data: { id: cp.id, name: cp.name, owner: cp.owner, prevOwner: oldOwner }
+          });
+        }
+      }
+    }
+
+    // broadcast snapshot with capture data
     this.broadcast({
       t: "snapshot",
       players: this.snapshotPlayers(),
-      units: this.snapshotUnits()
+      units: this.snapshotUnits(),
+      capturePoints: this.snapshotCapturePoints()
     });
   }
 
@@ -342,6 +394,20 @@ export class GameRoom {
       z: Math.round(u.z * 10) / 10,
       hp: Math.round(u.hp),
       maxHp: u.maxHp
+    }));
+  }
+
+  snapshotCapturePoints() {
+    return this.capturePoints.map(cp => ({
+      id: cp.id,
+      name: cp.name,
+      x: cp.x,
+      z: cp.z,
+      radius: cp.radius,
+      owner: cp.owner,
+      capturing: cp.capturing,
+      progress: Math.round(cp.progress * 10) / 10,
+      contested: cp.contested
     }));
   }
 
