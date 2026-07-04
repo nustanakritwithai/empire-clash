@@ -61,8 +61,66 @@
     commander: { name: "ดาบ+ธง", action: "คลิก=ฟัน | B/G=สร้าง", range: 4.5, cooldown: 750, color: 0xc4452f, projectile: false }
   };
 
+  function currentEquippedItem() {
+    var loadout = (G.player && G.player.loadout) || [];
+    var slot = (G.player && G.player.equippedSlot) || 1;
+    var item = (G.player && G.player.equippedItem) || null;
+    return item || loadout.find(function (it) { return it.slot === slot; }) || loadout[0] || { id: "sword", displayName: "Sword", slot: 1, itemType: "melee", primaryAction: "melee", secondaryAction: "none" };
+  }
+
   function currentClassWeapon() {
-    return CLASS_WEAPONS[G.playerClass] || CLASS_WEAPONS.infantry;
+    var item = currentEquippedItem();
+    var labels = {
+      sword: { name: "ดาบ", action: "คลิก=ฟัน", color: 0xd8d0b0, projectile: false, range: 4.8, cooldown: 650 },
+      shield: { name: "โล่", action: "คลิก=กระแทก | คลิกขวา=ยกโล่", color: 0x777766, projectile: false, range: 3.2, cooldown: 800 },
+      bow: { name: "ธนู", action: "คลิก=ยิง | คลิกขวา=เล็ง", color: 0x8b5a2b, projectile: true, range: 85, cooldown: 900 },
+      axe: { name: "ขวาน", action: "คลิก=ตี | E=เก็บไม้", color: 0xe0a23c, projectile: false, range: 3.8, cooldown: 850 },
+      pickaxe: { name: "พลั่ว", action: "คลิก=ตี | E=ขุดหิน", color: 0x9aa0a6, projectile: false, range: 3.8, cooldown: 850 },
+      commander_sword: { name: "ดาบแม่ทัพ", action: "คลิก=ฟัน", color: 0xc4452f, projectile: false, range: 4.5, cooldown: 750 },
+      wall_blueprint: { name: "แบบกำแพง", action: "คลิก=วางกำแพง | คลิกขวา=หมุน", color: 0x8b6b3f, projectile: false, range: 8, cooldown: 500 },
+      rally_blueprint: { name: "แบบธง", action: "คลิก=วางธง | คลิกขวา=หมุน", color: 0xc4452f, projectile: false, range: 8, cooldown: 1000 }
+    };
+    return labels[item.id] || { name: item.displayName || "Item", action: item.primaryAction || "ใช้", color: 0xeeeeee, projectile: false };
+  }
+
+  function selectSlot(slot) {
+    if (!slot || slot < 1 || slot > 5) return;
+    if (typeof netSend === "function") netSend({ t: "selectItem", slot: slot });
+    var local = ((G.player && G.player.loadout) || []).find(function (it) { return it.slot === slot; });
+    if (local) G.player.equippedItem = local;
+    G.player.equippedSlot = slot;
+    updateHotbar();
+    updateHeldModel();
+  }
+
+  function updateHotbar() {
+    var bar = document.getElementById("hotbar");
+    var label = document.getElementById("equippedLabel");
+    if (!bar || !label) return;
+    var loadout = (G.player && G.player.loadout) || [];
+    var item = currentEquippedItem();
+    if (!loadout.length) { bar.style.display = "none"; label.style.display = "none"; return; }
+    bar.style.display = "flex";
+    label.style.display = "block";
+    label.textContent = "ถือ: " + (item.displayName || item.id);
+    bar.innerHTML = "";
+    for (var i = 1; i <= 5; i++) {
+      var it = loadout.find(function (x) { return x.slot === i; });
+      var b = document.createElement("div");
+      b.dataset.slot = i;
+      var selected = item && it && item.slot === it.slot;
+      b.style.cssText = "min-width:48px;height:42px;padding:3px 5px;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:" + (selected ? "rgba(224,162,60,.88)" : "rgba(15,18,28,.78)") + ";border:1px solid " + (selected ? "#ffd27a" : "rgba(255,255,255,.22)") + ";color:#eee;font-size:10px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35)";
+      b.innerHTML = "<b>" + i + "</b><span>" + (it ? (it.displayName || it.id).replace("Blueprint", "Plan") : "-") + "</span>";
+      if (it) b.addEventListener("click", (function (slot) { return function () { selectSlot(slot); }; })(i));
+      bar.appendChild(b);
+    }
+  }
+  window.updateHotbar = updateHotbar;
+
+  function updateHeldModel() {
+    if (!G.gunGroup) return;
+    var w = currentClassWeapon();
+    G.gunGroup.children.forEach(function (ch) { if (ch.material && ch.material.color) ch.material.color.setHex(w.color); });
   }
 
   // ===== INIT =====
@@ -356,7 +414,7 @@
       shoot();
     });
     document.addEventListener("mousedown", function (e) {
-      if (e.button === 2 && G.mouseLocked && G.playerClass === "infantry") {
+      if (e.button === 2 && G.mouseLocked && currentEquippedItem().secondaryAction === "block") {
         G.blocking = true;
         netSend({ t: "block", active: true });
         updateAmmoDisplay();
@@ -364,7 +422,7 @@
     });
     document.addEventListener("contextmenu", function (e) {
       e.preventDefault();
-      if (G.mouseLocked && G.playerClass === "infantry") {
+      if (G.mouseLocked && currentEquippedItem().secondaryAction === "block") {
         G.blocking = true;
         netSend({ t: "block", active: true });
         updateAmmoDisplay();
@@ -414,13 +472,23 @@
     window.addEventListener("keydown", function (e) {
       if (e.code === "KeyV") toggleCamera();
       if (e.code === "KeyR") toast("Phase 9: ไม่มีรีโหลด — ใช้ stamina");
-      if (e.code === "Digit1" || e.code === "Digit2" || e.code === "Digit3") toast(currentClassWeapon().name);
+      if (e.code === "Digit1") selectSlot(1);
+      if (e.code === "Digit2") selectSlot(2);
+      if (e.code === "Digit3") selectSlot(3);
+      if (e.code === "Digit4") selectSlot(4);
+      if (e.code === "Digit5") selectSlot(5);
       if (e.code === "KeyF" || e.code === "KeyQ") melee();
       if (e.code === "KeyE") tryInteract();
-      if (e.code === "KeyB") tryBuild("wooden_wall");
-      if (e.code === "KeyG") tryBuild("rally_flag");
       if (e.code === "KeyH") tryAttackBuilding();
     });
+    window.addEventListener("wheel", function (e) {
+      var loadout = (G.player && G.player.loadout) || [];
+      if (!loadout.length) return;
+      var idx = loadout.findIndex(function (it) { return it.slot === G.player.equippedSlot; });
+      idx = idx < 0 ? 0 : idx;
+      idx = (idx + (e.deltaY > 0 ? 1 : -1) + loadout.length) % loadout.length;
+      selectSlot(loadout[idx].slot);
+    }, { passive: true });
 
     // ===== TOUCH CONTROLS =====
     initTouchControls();
@@ -1038,7 +1106,14 @@
 
   function classAttack() {
     if (G.dead) return;
+    var item = currentEquippedItem();
     var w = currentClassWeapon();
+    if (item.itemType === "blueprint") {
+      tryBuild(item.buildType);
+      return;
+    }
+    w.range = w.range || (item.id === "bow" ? 85 : 4.5);
+    w.cooldown = w.cooldown || (item.id === "bow" ? 900 : 750);
     if (Date.now() - G.lastShoot < w.cooldown) return;
     G.lastShoot = Date.now();
     updateAmmoDisplay();
@@ -1741,6 +1816,9 @@
         toast("ต้องเป็นคนงานเท่านั้น");
         return;
       }
+      var item = currentEquippedItem();
+      if (nearNode.type === "wood" && item.id !== "axe") { toast("ต้องถือขวาน"); return; }
+      if (nearNode.type === "stone" && item.id !== "pickaxe") { toast("ต้องถือพลั่วขุดหิน"); return; }
       netSend({ t: "gather", nodeId: nearNode.id });
       return;
     }
@@ -1771,8 +1849,16 @@
     if (nearNode) {
       prompt.style.display = "block";
       if (G.playerClass === "worker") {
-        prompt.textContent = "กด E เก็บ " + (nearNode.type === "wood" ? "ไม้" : "หิน") + " (" + nearNode.amount + ")";
-        prompt.style.color = "#e0a23c";
+        var item = currentEquippedItem();
+        var okTool = (nearNode.type === "wood" && item.id === "axe") || (nearNode.type === "stone" && item.id === "pickaxe");
+        if (okTool) {
+          prompt.textContent = nearNode.type === "wood" ? "กด E เก็บไม้" : "กด E เก็บหิน";
+          prompt.textContent += " (" + nearNode.amount + ")";
+          prompt.style.color = "#e0a23c";
+        } else {
+          prompt.textContent = nearNode.type === "wood" ? "ต้องถือขวาน" : "ต้องถือพลั่วขุดหิน";
+          prompt.style.color = "#aaa";
+        }
       } else {
         prompt.textContent = "ต้องเป็นคนงานเท่านั้น";
         prompt.style.color = "#888";
@@ -1792,6 +1878,15 @@
           prompt.style.color = "#e0a23c";
           return;
         }
+      }
+    }
+    if (G.playerClass === "commander") {
+      var item = currentEquippedItem();
+      if (item && item.itemType === "blueprint") {
+        prompt.style.display = "block";
+        prompt.textContent = "คลิกเพื่อวาง " + (item.buildType === "wooden_wall" ? "กำแพงไม้" : "ธงรวมพล") + " | คลิกขวา=หมุน/ยกเลิก";
+        prompt.style.color = "#e0a23c";
+        return;
       }
     }
     hideInteractionPrompt();
@@ -1870,33 +1965,22 @@
 
   function updateBuildMenu() {
     var menu = document.getElementById("buildMenu");
-    if (!menu) return;
-    if (G.playerClass !== "commander") {
-      menu.style.display = "none";
-      return;
-    }
-    menu.style.display = "flex";
-    var fr = (typeof NET !== "undefined" && NET.factionResources) ? NET.factionResources[G.playerFaction] || { wood: 0, stone: 0 } : { wood: 0, stone: 0 };
-    var wallBtn = document.getElementById("buildWall");
-    var flagBtn = document.getElementById("buildFlag");
-    if (wallBtn) {
-      wallBtn.style.opacity = fr.wood >= 10 ? "1" : "0.4";
-      wallBtn.textContent = "กำแพงไม้ (10 ไม้) ฝ่าย: " + fr.wood;
-    }
-    if (flagBtn) {
-      flagBtn.style.opacity = (fr.wood >= 5 && fr.stone >= 5) ? "1" : "0.4";
-      flagBtn.textContent = "ธงรวมพล (5ไม้ 5หิน) ฝ่าย: " + fr.wood + "/" + fr.stone;
-    }
+    if (menu) menu.style.display = "none";
   }
 
-  // Build placement: B = wall, G = rally flag
+  // Build placement via equipped blueprint hotbar item
   // Place at player's current position + small offset in facing direction
   function tryBuild(buildingType) {
     if (G.playerClass !== "commander") {
       toast("ต้องเป็นแม่ทัพเท่านั้น");
       return;
     }
-    // place in front of player (2 units in facing direction)
+    var item = currentEquippedItem();
+    if (!item || item.itemType !== "blueprint" || item.buildType !== buildingType) {
+      toast("ต้องถือแบบก่อสร้างก่อน");
+      return;
+    }
+    // place in front of player (3 units in facing direction)
     var dir = new THREE.Vector3();
     G.camera.getWorldDirection(dir);
     dir.y = 0;

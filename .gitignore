@@ -40,3 +40,5 @@ test_phase8_direct.mjs
 test_phase8_5_direct.mjs
 test_phase9_direct.mjs
 test_phase9_ws.mjs
+test_phase9_6_direct.mjs
+test_phase9_6_ws.mjs

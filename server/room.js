@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WEAPONS, CLASS_WEAPONS, STAMINA_CONFIG, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS, ROUND_CONFIG, RESOURCE_CONFIG, RESOURCE_NODES, WAREHOUSES, BUILDINGS, MAP_BOUNDS } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, CLASS_WEAPONS, STAMINA_CONFIG, WORLD, FACTIONS, resolveClass, defaultEquipment, itemForSlot, loadoutForClass, CAPTURE_POINTS, ROUND_CONFIG, RESOURCE_CONFIG, RESOURCE_NODES, WAREHOUSES, BUILDINGS, MAP_BOUNDS } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -19,8 +19,25 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const yawForward = (ry = 0) => ({ x: -Math.sin(ry), z: -Math.cos(ry) });
 const dot2 = (ax, az, bx, bz) => ax * bx + az * bz;
 const len2 = (x, z) => Math.sqrt(x * x + z * z) || 1;
+function getEquippedItem(p) {
+  const item = itemForSlot(p.class, p.equippedSlot) || defaultEquipment(p.class).equippedItem;
+  if (item && (!p.equippedItem || p.equippedItem.id !== item.id)) p.equippedItem = item;
+  return item;
+}
+function combatDefForItem(item, p) {
+  if (!item) return null;
+  const base = CLASS_WEAPONS[p.class] || CLASS_WEAPONS.infantry;
+  if (item.id === "shield") return { ...base, id: "shield", name: "Shield", damage: 8, range: 3.2, cooldown: 800, staminaCost: 10, coneCos: 0.35, buildingDamage: 4, canBlock: true, blockReduction: 0.65, blockConeCos: 0.25 };
+  if (item.id === "axe") return { ...base, id: "axe", name: "Axe", damage: 10, range: 3.8, cooldown: 850, staminaCost: 12, coneCos: 0.35, buildingDamage: 10 };
+  if (item.id === "pickaxe") return { ...base, id: "pickaxe", name: "Pickaxe", damage: 10, range: 3.8, cooldown: 850, staminaCost: 12, coneCos: 0.35, buildingDamage: 12 };
+  if (item.id === "commander_sword") return { ...base, id: "commander_sword", name: "Commander Sword" };
+  if (item.id === "sword") return { ...base, id: "sword", name: "Sword" };
+  if (item.id === "bow") return { ...base, id: "bow", name: "Bow" };
+  return base;
+}
 function isFrontalBlock(target, attacker) {
-  const def = CLASS_WEAPONS[target.class];
+  const item = getEquippedItem(target);
+  const def = combatDefForItem(item, target);
   if (!def?.canBlock || !target.blocking || target.stamina <= 0) return false;
   const toAttackerX = attacker.x - target.x;
   const toAttackerZ = attacker.z - target.z;
@@ -31,7 +48,8 @@ function isFrontalBlock(target, attacker) {
 function applyClassDamage(target, attacker, baseDamage) {
   let dmg = baseDamage;
   if (isFrontalBlock(target, attacker)) {
-    const def = CLASS_WEAPONS[target.class];
+    const item = getEquippedItem(target);
+    const def = combatDefForItem(item, target);
     dmg = Math.max(1, Math.round(dmg * (1 - (def.blockReduction || 0.6))));
     target.stamina = clamp((target.stamina || 0) - 10, 0, target.maxStamina || STAMINA_CONFIG.max);
   }
@@ -94,6 +112,7 @@ export class GameRoom {
       const cls = resolveClass(m.class); // backward-compatible class resolution, fallback infantry
       const faction = FACTIONS[m.faction] ? m.faction : "ironhold";
       const sp = FACTIONS[faction].spawn;
+      const eq = defaultEquipment(cls);
       this.players.set(ws.id, {
         ws,
         name: String(m.name || "player").slice(0, 16),
@@ -128,6 +147,8 @@ export class GameRoom {
         blockStartedAt: 0,
         sprinting: false,
         anim: "idle",
+        equippedSlot: eq.equippedSlot,
+        equippedItem: eq.equippedItem,
         inventory: { wood: 0, stone: 0 }, // Phase 7: player resource inventory
         lastGatherTime: 0
       });
@@ -182,9 +203,20 @@ export class GameRoom {
       p.ry = +m.ry || 0;
       p.anim = m.anim || "idle";
       p.sprinting = !!m.sprinting;
+    } else if (m.t === "selectItem") {
+      const item = itemForSlot(p.class, +m.slot);
+      if (!item) {
+        try { ws.send(encode({ t: "event", kind: "selectReject", data: { reason: "Invalid slot" } })); } catch {}
+        return;
+      }
+      p.equippedSlot = item.slot;
+      p.equippedItem = item;
+      p.blocking = false;
+      this.broadcast({ t: "event", kind: "selectItem", data: { from: ws.id, slot: item.slot, itemId: item.id } }, ws.id);
     } else if (m.t === "block") {
-      const def = CLASS_WEAPONS[p.class];
-      p.blocking = !!m.active && !!def?.canBlock && p.stamina > 0;
+      const item = getEquippedItem(p);
+      const def = combatDefForItem(item, p);
+      p.blocking = !!m.active && item?.secondaryAction === "block" && !!def?.canBlock && p.stamina > 0;
       p.blockStartedAt = p.blocking ? now : 0;
       this.broadcast({
         t: "event",
@@ -275,11 +307,14 @@ export class GameRoom {
     } else if (m.t === "ping") {
       ws.send(encode({ t: "pong" }));
     } else if (m.t === "gather") {
-      // Phase 7: Worker gathers from resource node
+      // Phase 9.6: Worker gathers with equipped tool
       if (p.class !== "worker") return; // only Worker can gather
+      const item = getEquippedItem(p);
+      if (!item || item.itemType !== "tool") return;
       if (now - p.lastGatherTime < RESOURCE_CONFIG.gatherCooldown) return;
       const node = this.resourceNodes.find(n => n.id === m.nodeId);
       if (!node || node.amount <= 0) return;
+      if (item.gatherType !== node.type) return;
       const dx = p.x - node.x, dz = p.z - node.z;
       if (dx * dx + dz * dz > RESOURCE_CONFIG.gatherRadius * RESOURCE_CONFIG.gatherRadius) return;
       // check inventory capacity
@@ -317,7 +352,11 @@ export class GameRoom {
         return;
       };
       if (p.class !== "commander") return rejectBuild("Commander required");
-      const def = BUILDINGS[m.buildingType];
+      const item = getEquippedItem(p);
+      if (!item || item.itemType !== "blueprint") return rejectBuild("Blueprint required");
+      const requestedType = m.buildingType || item.buildType;
+      if (requestedType !== item.buildType) return rejectBuild("Wrong blueprint");
+      const def = BUILDINGS[requestedType];
       if (!def) return rejectBuild("Unknown building");
       if (now - (p.lastBuildTime || 0) < def.buildCooldown) return rejectBuild("Build cooldown");
       // validate placement distance
@@ -359,7 +398,7 @@ export class GameRoom {
       fr.stone -= (def.cost.stone || 0);
       const building = {
         id: this._bid++,
-        type: m.buildingType,
+        type: requestedType,
         faction: p.faction,
         x: bx,
         z: bz,
@@ -382,8 +421,9 @@ export class GameRoom {
       if (!bld) return;
       if (bld.faction === p.faction) return; // friendly fire blocked
       const bdef = BUILDINGS[bld.type];
-      const wdef = CLASS_WEAPONS[p.class];
-      if (!bdef || !wdef) return;
+      const item = getEquippedItem(p);
+      const wdef = combatDefForItem(item, p);
+      if (!bdef || !wdef || item?.itemType === "blueprint") return;
       if (now - (p.lastClassAttackTime || 0) < wdef.cooldown) return;
       if ((p.stamina || 0) < wdef.staminaCost) return;
       const bdx = bld.x - p.x, bdz = bld.z - p.z;
@@ -417,8 +457,9 @@ export class GameRoom {
   }
 
   handleClassAttack(ws, p, m, now = Date.now()) {
-    const def = CLASS_WEAPONS[p.class];
-    if (!def) return;
+    const item = getEquippedItem(p);
+    const def = combatDefForItem(item, p);
+    if (!def || item?.itemType === "blueprint") return;
     if (p.dead) return;
     if (now - (p.lastClassAttackTime || 0) < def.cooldown) return;
     if ((p.stamina || 0) < def.staminaCost) return;
@@ -718,7 +759,10 @@ export class GameRoom {
         stamina: Math.round((p.stamina ?? STAMINA_CONFIG.max) * 10) / 10,
         maxStamina: p.maxStamina || STAMINA_CONFIG.max,
         blocking: !!p.blocking,
-        weapon: CLASS_WEAPONS[p.class]?.id || "unknown",
+        equippedSlot: p.equippedSlot || 1,
+        equippedItem: getEquippedItem(p),
+        loadout: loadoutForClass(p.class),
+        weapon: combatDefForItem(getEquippedItem(p), p)?.id || "unknown",
         anim: p.anim,
         inventory: p.inventory ? { ...p.inventory } : { wood: 0, stone: 0 }
       });

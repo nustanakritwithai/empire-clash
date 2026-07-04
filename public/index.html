@@ -125,10 +125,9 @@ canvas { display:block; }
 <div id="winnerOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:60;font-family:monospace"></div>
 <div id="interactPrompt" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);font-size:12px;font-family:monospace;z-index:10;pointer-events:none;display:none;background:rgba(0,0,0,.7);padding:4px 10px;border-radius:3px"></div>
 <div id="resourceHud" style="position:fixed;bottom:10px;left:10px;font-family:monospace;z-index:10;pointer-events:none;display:none"></div>
-<div id="buildMenu" style="position:fixed;bottom:40px;left:50%;transform:translateX(-50%);display:none;gap:8px;z-index:10">
-  <div id="buildWall" class="shopBtn" style="padding:6px 10px;background:rgba(20,20,40,.85);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#eee;font-family:monospace;font-size:10px;cursor:pointer">กำแพงไม้ (10 ไม้)</div>
-  <div id="buildFlag" class="shopBtn" style="padding:6px 10px;background:rgba(20,20,40,.85);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#eee;font-family:monospace;font-size:10px;cursor:pointer">ธงรวมพล (5ไม้ 5หิน)</div>
-</div>
+<div id="buildMenu" style="display:none"></div>
+<div id="hotbar" style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:none;gap:6px;z-index:18;font-family:monospace;pointer-events:auto"></div>
+<div id="equippedLabel" style="position:fixed;bottom:78px;left:50%;transform:translateX(-50%);display:none;z-index:18;font-size:12px;font-family:monospace;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.18);padding:4px 10px;border-radius:4px;color:#eee;pointer-events:none">ถือ: -</div>
 
 <canvas id="minimap" width="120" height="120"></canvas>
 <div id="scopeOverlay"><div class="sv"></div><div class="sl"></div><div class="sc2"></div><div class="sdot"></div></div>
@@ -144,7 +143,7 @@ canvas { display:block; }
 </div>
 
 <div id="overlay" style="display:none"></div>
-<div id="controls" style="display:none">WASD เดิน | Shift วิ่ง | คลิก โจมตีประจำอาชีพ | คลิกขวา โล่(ทหารราบ) | E เก็บ/ฝาก | B กำแพง | G ธง | H โจมตีอาคาร | V กล้อง | ESC ปลดล็อค</div>
+<div id="controls" style="display:none">WASD เดิน | Shift วิ่ง | 1-5/ล้อเมาส์ เลือกของ | คลิก ใช้ของที่ถือ | คลิกขวา ใช้รอง | E เก็บ/ฝาก | H โจมตีอาคาร | V กล้อง | ESC ปลดล็อค</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="net.js"></script>

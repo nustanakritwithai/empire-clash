@@ -127,6 +127,38 @@ export const CLASS_WEAPONS = {
   }
 };
 
+export const EQUIPMENT_LOADOUTS = {
+  infantry: [
+    { id: "sword", displayName: "Sword", classRestrictions: ["infantry"], slot: 1, itemType: "melee", primaryAction: "melee", secondaryAction: "none", weaponKey: "infantry_sword" },
+    { id: "shield", displayName: "Shield", classRestrictions: ["infantry"], slot: 2, itemType: "shield", primaryAction: "bash", secondaryAction: "block", weaponKey: "infantry_shield" }
+  ],
+  archer: [
+    { id: "bow", displayName: "Bow", classRestrictions: ["archer"], slot: 1, itemType: "ranged", primaryAction: "bow", secondaryAction: "aim", weaponKey: "bow" }
+  ],
+  worker: [
+    { id: "axe", displayName: "Axe", classRestrictions: ["worker"], slot: 1, itemType: "tool", primaryAction: "melee_gather", secondaryAction: "none", weaponKey: "worker_axe", gatherType: "wood" },
+    { id: "pickaxe", displayName: "Pickaxe", classRestrictions: ["worker"], slot: 2, itemType: "tool", primaryAction: "melee_gather", secondaryAction: "none", weaponKey: "worker_pickaxe", gatherType: "stone" }
+  ],
+  commander: [
+    { id: "commander_sword", displayName: "Sword", classRestrictions: ["commander"], slot: 1, itemType: "melee", primaryAction: "melee", secondaryAction: "none", weaponKey: "commander_sword" },
+    { id: "wall_blueprint", displayName: "Wall Plan", classRestrictions: ["commander"], slot: 2, itemType: "blueprint", primaryAction: "build", secondaryAction: "rotate", buildType: "wooden_wall", cost: { wood: 10, stone: 0 } },
+    { id: "rally_blueprint", displayName: "Rally Plan", classRestrictions: ["commander"], slot: 3, itemType: "blueprint", primaryAction: "build", secondaryAction: "rotate", buildType: "rally_flag", cost: { wood: 5, stone: 5 } }
+  ]
+};
+
+export function loadoutForClass(cls) {
+  return EQUIPMENT_LOADOUTS[cls] || EQUIPMENT_LOADOUTS.infantry;
+}
+
+export function itemForSlot(cls, slot) {
+  return loadoutForClass(cls).find(it => it.slot === +slot) || null;
+}
+
+export function defaultEquipment(cls) {
+  const item = loadoutForClass(cls)[0];
+  return { equippedSlot: item?.slot || 1, equippedItem: item || null };
+}
+
 export const UNITS = {
   infantry: {
     name: "ทหารราบ",

@@ -49,6 +49,8 @@
             G.player.kills = p.kills; G.player.deaths = p.deaths;
             G.player.dead = p.dead;
             G.player.stamina = p.stamina; G.player.maxStamina = p.maxStamina; G.player.blocking = p.blocking; G.player.weapon = p.weapon;
+            G.player.equippedSlot = p.equippedSlot; G.player.equippedItem = p.equippedItem; G.player.loadout = p.loadout || [];
+            if (typeof window !== "undefined" && typeof window.updateHotbar === "function") window.updateHotbar();
             if (p.inventory) G.player.inventory = p.inventory;
           }
           return;
@@ -60,6 +62,7 @@
         e.tx = p.x; e.ty = p.y; e.tz = p.z; e.rx = p.rx; e.ry = p.ry;
         e.hp = p.hp; e.maxHp = p.maxHp; e.dead = p.dead; e.anim = p.anim;
         e.stamina = p.stamina; e.maxStamina = p.maxStamina; e.blocking = p.blocking; e.weapon = p.weapon;
+        e.equippedSlot = p.equippedSlot; e.equippedItem = p.equippedItem; e.loadout = p.loadout || [];
       });
       NET.players.forEach(function (v, k) { if (!seen[k]) NET.players.delete(k); });
       NET.units = m.units || [];
