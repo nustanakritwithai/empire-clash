@@ -56,11 +56,75 @@ export function resolveClass(raw) {
   return "infantry";
 }
 
+// Legacy gun definitions kept for hidden/debug references only.
+// Phase 9 normal gameplay uses CLASS_WEAPONS below.
 export const WEAPONS = {
   rifle:  { dmg: 18, range: 80 },
   smg:    { dmg: 10, range: 50 },
   sniper: { dmg: 85, range: 160 },
   melee:  { dmg: 35, range: 5 }
+};
+
+// Phase 9: medieval/fantasy class combat config.
+export const STAMINA_CONFIG = {
+  max: 100,
+  regenPerSecond: 18,
+  sprintCostPerSecond: 12,
+  blockDrainPerSecond: 10
+};
+
+export const CLASS_WEAPONS = {
+  infantry: {
+    id: "sword_shield",
+    name: "Sword + Shield",
+    mode: "melee",
+    damage: 28,
+    range: 4.8,
+    cooldown: 650,
+    staminaCost: 18,
+    coneCos: 0.45,
+    buildingDamage: 18,
+    canBlock: true,
+    blockReduction: 0.65,
+    blockConeCos: 0.25
+  },
+  archer: {
+    id: "bow",
+    name: "Bow",
+    mode: "ranged",
+    damage: 22,
+    range: 85,
+    cooldown: 900,
+    drawTime: 350,
+    staminaCost: 16,
+    coneCos: 0.82,
+    buildingDamage: 8,
+    canBlock: false
+  },
+  worker: {
+    id: "tools",
+    name: "Axe / Pickaxe",
+    mode: "melee",
+    damage: 10,
+    range: 3.8,
+    cooldown: 850,
+    staminaCost: 12,
+    coneCos: 0.35,
+    buildingDamage: 10,
+    canBlock: false
+  },
+  commander: {
+    id: "sword_banner",
+    name: "Sword + Banner",
+    mode: "melee",
+    damage: 18,
+    range: 4.5,
+    cooldown: 750,
+    staminaCost: 16,
+    coneCos: 0.4,
+    buildingDamage: 14,
+    canBlock: false
+  }
 };
 
 export const UNITS = {

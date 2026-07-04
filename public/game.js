@@ -8,6 +8,7 @@
     playerClass: "infantry",
     player: { x: 0, y: 1.6, z: 0, hp: 100, maxHp: 100, gold: 100, level: 1, kills: 0, deaths: 0, speed: 5.5, damage: 15 },
     dead: false,
+    blocking: false,
     scene: null, camera: null, renderer: null,
     buildings: [], remoteMeshes: new Map(), unitMeshes: new Map(),
     keys: {}, mouseLocked: false,
@@ -46,13 +47,23 @@
     commander:{ hp: 140, speed: 4.8, damage: 14, color: 0xc4452f, name: "แม่ทัพ" }  // TODO Phase 8: building
   };
 
-  // ===== WEAPONS =====
+  // ===== LEGACY GUNS (hidden/debug reference only after Phase 9) =====
   var WEAPONS = {
-    rifle:  { name: "ไรเฟิล",   mag: 30, reserve: 90,  fireRate: 120, dmg: 18, range: 80,  spread: 0.018, recoil: 0.012, reloadTime: 1800, auto: true,  color: 0x8a8a8a, bulletSpeed: 100 },
-    smg:    { name: "ปืนกลMT",  mag: 50, reserve: 150, fireRate: 70,  dmg: 10, range: 50,  spread: 0.038, recoil: 0.009, reloadTime: 1500, auto: true,  color: 0x6a6a8a, bulletSpeed: 90 },
-    sniper: { name: "สไนเปอร์", mag: 5,  reserve: 20,  fireRate: 900, dmg: 85, range: 160, spread: 0.002, recoil: 0.055, reloadTime: 2600, auto: false, color: 0x3a3a3a, bulletSpeed: 200, zoomFov: 15 }
+    rifle:  { name: "ไรเฟิล(debug)",   mag: 30, reserve: 90,  fireRate: 120, dmg: 18, range: 80,  spread: 0.018, recoil: 0.012, reloadTime: 1800, auto: true,  color: 0x8a8a8a, bulletSpeed: 100 },
+    smg:    { name: "ปืนกลMT(debug)",  mag: 50, reserve: 150, fireRate: 70,  dmg: 10, range: 50,  spread: 0.038, recoil: 0.009, reloadTime: 1500, auto: true,  color: 0x6a6a8a, bulletSpeed: 90 },
+    sniper: { name: "สไนเปอร์(debug)", mag: 5,  reserve: 20,  fireRate: 900, dmg: 85, range: 160, spread: 0.002, recoil: 0.055, reloadTime: 2600, auto: false, color: 0x3a3a3a, bulletSpeed: 200, zoomFov: 15 }
   };
   var WEAPON_KEYS = ["rifle", "smg", "sniper"];
+  var CLASS_WEAPONS = {
+    infantry: { name: "ดาบ+โล่", action: "คลิก=ฟัน | คลิกขวา=ยกโล่", range: 4.8, cooldown: 650, color: 0xd8d0b0, projectile: false },
+    archer: { name: "ธนู", action: "คลิก=ยิงธนู", range: 85, cooldown: 900, color: 0x8b5a2b, projectile: true },
+    worker: { name: "ขวาน/พลั่ว", action: "คลิก=ตีเบา | E=เก็บ/ฝาก", range: 3.8, cooldown: 850, color: 0xe0a23c, projectile: false },
+    commander: { name: "ดาบ+ธง", action: "คลิก=ฟัน | B/G=สร้าง", range: 4.5, cooldown: 750, color: 0xc4452f, projectile: false }
+  };
+
+  function currentClassWeapon() {
+    return CLASS_WEAPONS[G.playerClass] || CLASS_WEAPONS.infantry;
+  }
 
   // ===== INIT =====
   function init() {
@@ -267,10 +278,10 @@
     head.position.y = 1.6;
     head.castShadow = true;
     G.playerMesh.add(head);
-    // simple gun (box) pointing forward
+    // simple class weapon placeholder (box) pointing forward
     var gun = new THREE.Mesh(
       new THREE.BoxGeometry(0.12, 0.12, 0.6),
-      new THREE.MeshLambertMaterial({ color: 0x333333 })
+      new THREE.MeshLambertMaterial({ color: currentClassWeapon().color })
     );
     gun.position.set(0.3, 1.0, -0.3);
     G.playerMesh.add(gun);
@@ -281,12 +292,12 @@
     G.cameraMode = "first"; // "first" or "third"
     G.cameraDistance = 4.5;
 
-    // ===== GUN MODEL (attached to camera for 1st person) =====
+    // ===== CLASS WEAPON MODEL (attached to camera for 1st person) =====
     G.gunGroup = new THREE.Group();
-    // gun body
+    // sword/bow/tool shaft
     var gunBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.15, 0.15, 0.8),
-      new THREE.MeshLambertMaterial({ color: 0x2a2a2a })
+      new THREE.BoxGeometry(G.playerClass === "archer" ? 0.08 : 0.12, 0.12, 0.8),
+      new THREE.MeshLambertMaterial({ color: currentClassWeapon().color })
     );
     gunBody.position.set(0, 0, -0.3);
     G.gunGroup.add(gunBody);
@@ -305,7 +316,15 @@
     );
     grip.position.set(0, -0.18, -0.1);
     G.gunGroup.add(grip);
-    // muzzle flash (hidden by default)
+    if (G.playerClass === "infantry") {
+      var shield = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35, 0.5, 0.06),
+        new THREE.MeshLambertMaterial({ color: 0x777766 })
+      );
+      shield.position.set(-0.28, -0.02, -0.35);
+      G.gunGroup.add(shield);
+    }
+    // muzzle/arrow flash placeholder (hidden by default)
     var flashMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0 });
     G.muzzleFlash = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), flashMat);
     G.muzzleFlash.position.set(0, 0, -0.9);
@@ -336,9 +355,27 @@
       }
       shoot();
     });
+    document.addEventListener("mousedown", function (e) {
+      if (e.button === 2 && G.mouseLocked && G.playerClass === "infantry") {
+        G.blocking = true;
+        netSend({ t: "block", active: true });
+        updateAmmoDisplay();
+      }
+    });
     document.addEventListener("contextmenu", function (e) {
       e.preventDefault();
-      if (G.mouseLocked) toggleZoom();
+      if (G.mouseLocked && G.playerClass === "infantry") {
+        G.blocking = true;
+        netSend({ t: "block", active: true });
+        updateAmmoDisplay();
+      }
+    });
+    document.addEventListener("mouseup", function (e) {
+      if (e.button === 2 && G.blocking) {
+        G.blocking = false;
+        netSend({ t: "block", active: false });
+        updateAmmoDisplay();
+      }
     });
     document.addEventListener("pointerlockchange", function () {
       G.mouseLocked = (document.pointerLockElement === G.renderer.domElement);
@@ -373,13 +410,11 @@
     layoutBtn.addEventListener("click", function () { toggleLayoutMode(); });
     document.body.appendChild(layoutBtn);
 
-    // keyboard hotkey V to toggle camera, R to reload, 1/2/3 weapon switch
+    // keyboard hotkey V camera, F/Q alternate class attack. Legacy gun switch/reload hidden after Phase 9.
     window.addEventListener("keydown", function (e) {
       if (e.code === "KeyV") toggleCamera();
-      if (e.code === "KeyR") startReload();
-      if (e.code === "Digit1") switchWeapon(0);
-      if (e.code === "Digit2") switchWeapon(1);
-      if (e.code === "Digit3") switchWeapon(2);
+      if (e.code === "KeyR") toast("Phase 9: ไม่มีรีโหลด — ใช้ stamina");
+      if (e.code === "Digit1" || e.code === "Digit2" || e.code === "Digit3") toast(currentClassWeapon().name);
       if (e.code === "KeyF" || e.code === "KeyQ") melee();
       if (e.code === "KeyE") tryInteract();
       if (e.code === "KeyB") tryBuild("wooden_wall");
@@ -432,13 +467,13 @@
     var shootBtn = document.createElement("div");
     shootBtn.id = "touchShoot";
     shootBtn.style.cssText = "position:fixed;left:20px;top:70px;width:80px;height:80px;border-radius:50%;background:rgba(196,69,47,0.65);border:2px solid rgba(255,255,255,0.35);z-index:20;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-family:monospace;touch-action:none";
-    shootBtn.textContent = "ยิง";
+    shootBtn.textContent = "โจมตี";
     document.body.appendChild(shootBtn);
     registerLayoutBtn(shootBtn, "shoot");
 
     var shootHint = document.createElement("div");
     shootHint.style.cssText = "position:fixed;left:20px;top:155px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace;text-align:center;width:80px";
-    shootHint.textContent = "กดค้าง=ยิงรัว";
+    shootHint.textContent = "กด=โจมตี / ธนูยิง";
     document.body.appendChild(shootHint);
 
     // --- Q3: crouch button (right-top) ---
@@ -979,17 +1014,14 @@
   }
 
   function updateAmmoDisplay() {
-    var el = document.getElementById("ammoDisplay");
+    var el = document.getElementById("actionDisplay") || document.getElementById("ammoDisplay");
     if (!el) return;
-    var ammo = currentAmmo();
-    var w = currentWeapon();
-    if (ammo.reloading) {
-      el.textContent = "รีโหลด...";
-      el.style.color = "#e0a23c";
-    } else {
-      el.textContent = ammo.mag + " / " + ammo.reserve;
-      el.style.color = ammo.mag === 0 ? "#e0584a" : "#eee";
-    }
+    var w = currentClassWeapon();
+    var me = G.player || null;
+    var stamina = me && me.maxStamina ? Math.round(me.stamina || 0) + "/" + Math.round(me.maxStamina) : "100/100";
+    var block = me && me.blocking ? " | โล่: ยก" : "";
+    el.innerHTML = w.name + "<br>STA " + stamina + block + "<br><span style='font-size:11px;color:#ccc'>" + w.action + "</span>";
+    el.style.color = me && me.stamina < 20 ? "#e0584a" : "#eee";
   }
 
   function updateReload() {
@@ -999,190 +1031,80 @@
     if (Date.now() - ammo.reloadStart >= w.reloadTime) finishReload();
   }
 
-  // ===== SHOOT =====
+  // ===== PHASE 9 CLASS ATTACK =====
   function shoot() {
-    if (G.dead) return;
-    var w = currentWeapon();
-    var ammo = currentAmmo();
-    if (ammo.reloading) return;
-    if (Date.now() - G.lastShoot < w.fireRate) return;
-    if (ammo.mag <= 0) {
-      // auto reload on empty
-      startReload();
-      return;
-    }
+    classAttack();
+  }
 
+  function classAttack() {
+    if (G.dead) return;
+    var w = currentClassWeapon();
+    if (Date.now() - G.lastShoot < w.cooldown) return;
     G.lastShoot = Date.now();
-    ammo.mag--;
     updateAmmoDisplay();
 
-    // muzzle flash
-    if (G.muzzleFlash) {
-      G.muzzleFlash.material.opacity = 1;
-      G.muzzleFlash.scale.set(1, 1, 1);
-      setTimeout(function () { if (G.muzzleFlash) G.muzzleFlash.material.opacity = 0; }, 50);
-    }
-    // gun recoil animation
-    if (G.gunGroup) {
-      G.gunGroup.position.z = -0.35;
-      setTimeout(function () { if (G.gunGroup) G.gunGroup.position.z = -0.5; }, 80);
-    }
-
-    // get camera direction
     var camDir = new THREE.Vector3();
     G.camera.getWorldDirection(camDir);
-
-    // apply spread (more if moving, less if zooming)
-    var moveSpread = isMoving() ? w.spread * 2.5 : w.spread;
-    var zoomMult = G.zooming ? 0.3 : 1.0;
-    moveSpread *= zoomMult;
-    var recoilAdd = G.currentRecoil;
-    var totalSpread = moveSpread + recoilAdd;
-    camDir.x += (Math.random() - 0.5) * totalSpread;
-    camDir.y += (Math.random() - 0.5) * totalSpread;
-    camDir.z += (Math.random() - 0.5) * totalSpread;
+    camDir.y = 0;
     camDir.normalize();
 
-    // accumulate recoil (recovers over time in animate)
-    G.currentRecoil += w.recoil;
-    if (G.currentRecoil > w.spread * 8) G.currentRecoil = w.spread * 8;
-    // kick camera up slightly
-    G.pitch += w.recoil * 0.5;
+    if (G.gunGroup) {
+      G.gunGroup.rotation.z = G.playerClass === "archer" ? 0.25 : -0.9;
+      G.gunGroup.position.z = -0.28;
+      setTimeout(function () {
+        if (G.gunGroup) {
+          G.gunGroup.rotation.z = 0;
+          G.gunGroup.position.z = -0.5;
+        }
+      }, 180);
+    }
 
-    // check remote players (cone check + distance)
-    var hitId = null, hitDist = Infinity, hitHead = false;
+    var hitId = null, hitDist = Infinity;
     if (typeof NET !== "undefined" && NET.players.size > 0) {
       NET.players.forEach(function (p, id) {
-        if (p.dead) return;
-        // client-side friendly fire filter: skip same faction (server is final authority)
+        if (id === NET.id || p.dead) return;
         if (p.faction === G.playerFaction) return;
         var dx = p.tx - G.player.x, dz = p.tz - G.player.z;
         var d = Math.sqrt(dx * dx + dz * dz);
         if (d > w.range) return;
         var toTarget = new THREE.Vector3(dx, 0, dz).normalize();
         var dot = camDir.dot(toTarget);
-        // tighter cone for sniper, wider for smg
-        var coneThreshold = w.spread < 0.005 ? 0.998 : 0.94;
-        if (dot > coneThreshold && d < hitDist) {
-          hitId = id; hitDist = d;
-          // headshot: aiming up and target close-ish
-          if (camDir.y < -0.15 && d < w.range * 0.6) hitHead = true;
-        }
+        var threshold = G.playerClass === "archer" ? 0.82 : 0.35;
+        if (dot > threshold && d < hitDist) { hitId = id; hitDist = d; }
       });
     }
 
-    if (hitId) {
-      var dmg = w.dmg;
-      // damage falloff: half damage at max range
-      var falloff = 1 - (hitDist / w.range) * 0.5;
-      dmg = Math.round(dmg * falloff);
-      if (hitHead) dmg = Math.round(dmg * 2.2);
-      netSend({ t: "hit", id: hitId, dmg: dmg, weapon: currentWeaponKey(), headshot: hitHead });
-      // hit marker
-      G.hitMarker = Date.now();
-      // impact effect at hit location
-      if (typeof NET !== "undefined" && NET.players.get(hitId)) {
-        var hp = NET.players.get(hitId);
-        spawnImpact(hp.tx, 1.0, hp.tz);
-        spawnBlood(hp.tx, 1.0, hp.tz);
-      }
+    var buildingId = null, buildingDist = Infinity;
+    if (typeof NET !== "undefined" && NET.buildings) {
+      NET.buildings.forEach(function (b) {
+        if (b.faction === G.playerFaction) return;
+        var dx = b.x - G.player.x, dz = b.z - G.player.z;
+        var d = Math.sqrt(dx * dx + dz * dz);
+        if (d > w.range) return;
+        var toB = new THREE.Vector3(dx, 0, dz).normalize();
+        var dot = camDir.dot(toB);
+        var threshold = G.playerClass === "archer" ? 0.82 : 0.35;
+        if (dot > threshold && d < buildingDist) { buildingId = b.id; buildingDist = d; }
+      });
     }
 
-    // send shoot visual to server
-    netSend({
-      t: "shoot",
-      weapon: currentWeaponKey(),
-      x: G.player.x, y: G.player.y, z: G.player.z,
-      dx: camDir.x, dy: camDir.y, dz: camDir.z
-    });
+    var payload = { t: "classAttack", dx: camDir.x, dz: camDir.z };
+    if (hitId && hitDist <= buildingDist) payload.id = hitId;
+    else if (buildingId !== null) payload.buildingId = buildingId;
+    if (G.playerClass === "archer") payload.drawMs = 400;
+    netSend(payload);
 
-    // spawn visible bullet (tracer)
-    var startPos = new THREE.Vector3(G.player.x, G.player.y - 0.1, G.player.z);
-    spawnBullet(startPos, camDir, w.bulletSpeed);
-
-    flashCrosshair();
+    if (w.projectile) {
+      var startPos = new THREE.Vector3(G.player.x, G.player.y - 0.1, G.player.z);
+      spawnBullet(startPos, camDir, 70);
+    } else {
+      flashCrosshair();
+    }
   }
 
   // ===== MELEE ATTACK =====
   function melee() {
-    if (G.dead) return;
-    if (Date.now() - G.lastMelee < G.meleeCooldown) return;
-    G.lastMelee = Date.now();
-    G.meleeAnim = Date.now();
-
-    // gun swing animation (slash)
-    if (G.gunGroup) {
-      G.gunGroup.rotation.z = -1.2;
-      G.gunGroup.position.z = -0.2;
-      G.gunGroup.position.y = 0.15;
-      setTimeout(function () {
-        if (G.gunGroup) {
-          G.gunGroup.rotation.z = 0;
-          G.gunGroup.position.z = G.zooming ? -0.5 : -0.5;
-          G.gunGroup.position.y = 0;
-        }
-      }, 250);
-    }
-
-    // get camera direction (horizontal only for melee)
-    var camDir = new THREE.Vector3();
-    G.camera.getWorldDirection(camDir);
-    camDir.y = 0;
-    camDir.normalize();
-
-    // check remote players within melee range + in front (120 degree cone)
-    var hitId = null, hitDist = Infinity;
-    if (typeof NET !== "undefined" && NET.players.size > 0) {
-      NET.players.forEach(function (p, id) {
-        if (p.dead) return;
-        // client-side friendly fire filter: skip same faction (server is final authority)
-        if (p.faction === G.playerFaction) return;
-        var dx = p.tx - G.player.x, dz = p.tz - G.player.z;
-        var d = Math.sqrt(dx * dx + dz * dz);
-        if (d > G.meleeRange) return;
-        var toTarget = new THREE.Vector3(dx, 0, dz).normalize();
-        var dot = camDir.dot(toTarget);
-        if (dot > 0.5 && d < hitDist) { // 0.5 = ~60 degrees each side = 120 cone
-          hitId = id; hitDist = d;
-        }
-      });
-    }
-
-    if (hitId) {
-      // melee does fixed damage, more from behind (backstab)
-      var toTarget = new THREE.Vector3(
-        NET.players.get(hitId).tx - G.player.x,
-        0,
-        NET.players.get(hitId).tz - G.player.z
-      ).normalize();
-      // check if target is facing away (backstab = 1.5x damage)
-      var targetFacing = NET.players.get(hitId).facing || toTarget;
-      var backstab = toTarget.dot(targetFacing) > 0.3;
-      var dmg = backstab ? Math.round(G.meleeDamage * 1.5) : G.meleeDamage;
-
-      netSend({ t: "hit", id: hitId, dmg: dmg, weapon: "melee", headshot: false });
-      G.hitMarker = Date.now();
-      toast(backstab ? "แทงข้างหลัง! " + dmg + " dmg" : "โจมตี " + dmg + " dmg");
-
-      // impact effect at hit location
-      if (NET.players.get(hitId)) {
-        spawnImpact(
-          new THREE.Vector3(NET.players.get(hitId).tx, NET.players.get(hitId).ty + 1, NET.players.get(hitId).tz),
-          new THREE.Vector3(0, 1, 0)
-        );
-      }
-    } else {
-      toast("ฟัน! (ไม่โดน)");
-    }
-
-    // send melee visual event to other players
-    if (typeof netSend === "function" && NET.connected) {
-      netSend({
-        t: "melee",
-        x: G.player.x, y: G.player.y, z: G.player.z,
-        dx: camDir.x, dy: 0, dz: camDir.z
-      });
-    }
+    classAttack();
   }
 
   // ===== BULLET SYSTEM =====
@@ -1305,8 +1227,10 @@
     if (G.touch) {
       if (G.touch.prone) speed *= 0.3;
       else if (G.touch.crouching) speed *= 0.5;
-      if (G.touch.sprinting) speed *= 1.6;
     }
+
+    var isSprinting = !!(G.keys["ShiftLeft"] || G.keys["ShiftRight"] || (G.touch && G.touch.sprinting));
+    if (isSprinting) speed *= 1.25;
 
     // keyboard crouch (Ctrl) and prone (C)
     if (G.keys["ControlLeft"] || G.keys["ControlRight"]) speed *= 0.5;
@@ -1376,7 +1300,8 @@
         t: "pos",
         x: G.player.x, y: G.player.y, z: G.player.z,
         rx: G.pitch, ry: G.yaw,
-        hp: G.player.hp, anim: anim
+        hp: G.player.hp, anim: anim,
+        sprinting: isSprinting
       });
     }
   }
@@ -1686,6 +1611,7 @@
     updateScoreHud();
     updateInteractionPrompt();
     updateResourceHud();
+    updateAmmoDisplay();
     updateBuildings();
     updateBuildMenu();
 
@@ -1991,8 +1917,10 @@
       if (d < 10 && d < nearDist) { near = b; nearDist = d; }
     });
     if (near) {
-      netSend({ t: "attackBuilding", id: near.id, dmg: 20 });
-      toast("โจมตี " + (near.type === "wooden_wall" ? "กำแพง" : "ธง") + " (-20 HP, " + near.hp + " remaining)");
+      var dx = near.x - G.player.x, dz = near.z - G.player.z;
+      var d = Math.sqrt(dx * dx + dz * dz) || 1;
+      netSend({ t: "classAttack", buildingId: near.id, dx: dx / d, dz: dz / d, drawMs: G.playerClass === "archer" ? 400 : 0 });
+      toast("โจมตี " + (near.type === "wooden_wall" ? "กำแพง" : "ธง") + " ด้วย " + currentClassWeapon().name);
     }
   }
 

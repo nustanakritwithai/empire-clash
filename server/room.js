@@ -1,5 +1,5 @@
 // room.js — GameRoom: tick loop, players, units, combat, economy
-import { CLASSES, UNITS, WEAPONS, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS, ROUND_CONFIG, RESOURCE_CONFIG, RESOURCE_NODES, WAREHOUSES, BUILDINGS, MAP_BOUNDS } from "./classes.js";
+import { CLASSES, UNITS, WEAPONS, CLASS_WEAPONS, STAMINA_CONFIG, WORLD, FACTIONS, resolveClass, CAPTURE_POINTS, ROUND_CONFIG, RESOURCE_CONFIG, RESOURCE_NODES, WAREHOUSES, BUILDINGS, MAP_BOUNDS } from "./classes.js";
 import { encode, decode, clamp, PROTO_VERSION } from "./protocol.js";
 
 const TICK_MS = 66; // ~15 Hz
@@ -16,6 +16,28 @@ const SPEED_TOLERANCE = 1.5;   // allow client to be slightly faster than class 
 const MAX_Y = 50;              // max height (anti-fly)
 
 const rand = (a, b) => a + Math.random() * (b - a);
+const yawForward = (ry = 0) => ({ x: -Math.sin(ry), z: -Math.cos(ry) });
+const dot2 = (ax, az, bx, bz) => ax * bx + az * bz;
+const len2 = (x, z) => Math.sqrt(x * x + z * z) || 1;
+function isFrontalBlock(target, attacker) {
+  const def = CLASS_WEAPONS[target.class];
+  if (!def?.canBlock || !target.blocking || target.stamina <= 0) return false;
+  const toAttackerX = attacker.x - target.x;
+  const toAttackerZ = attacker.z - target.z;
+  const d = len2(toAttackerX, toAttackerZ);
+  const f = yawForward(target.ry);
+  return dot2(f.x, f.z, toAttackerX / d, toAttackerZ / d) >= (def.blockConeCos ?? 0.25);
+}
+function applyClassDamage(target, attacker, baseDamage) {
+  let dmg = baseDamage;
+  if (isFrontalBlock(target, attacker)) {
+    const def = CLASS_WEAPONS[target.class];
+    dmg = Math.max(1, Math.round(dmg * (1 - (def.blockReduction || 0.6))));
+    target.stamina = clamp((target.stamina || 0) - 10, 0, target.maxStamina || STAMINA_CONFIG.max);
+  }
+  target.hp -= dmg;
+  return dmg;
+}
 
 export class GameRoom {
   constructor() {
@@ -99,6 +121,12 @@ export class GameRoom {
         shootWindowStart: Date.now(),
         lastHitTime: 0,
         lastShootTime: 0,
+        lastClassAttackTime: 0,
+        stamina: STAMINA_CONFIG.max,
+        maxStamina: STAMINA_CONFIG.max,
+        blocking: false,
+        blockStartedAt: 0,
+        sprinting: false,
         anim: "idle",
         inventory: { wood: 0, stone: 0 }, // Phase 7: player resource inventory
         lastGatherTime: 0
@@ -153,6 +181,18 @@ export class GameRoom {
       p.rx = +m.rx || 0;
       p.ry = +m.ry || 0;
       p.anim = m.anim || "idle";
+      p.sprinting = !!m.sprinting;
+    } else if (m.t === "block") {
+      const def = CLASS_WEAPONS[p.class];
+      p.blocking = !!m.active && !!def?.canBlock && p.stamina > 0;
+      p.blockStartedAt = p.blocking ? now : 0;
+      this.broadcast({
+        t: "event",
+        kind: "block",
+        data: { from: ws.id, active: p.blocking }
+      }, ws.id);
+    } else if (m.t === "classAttack") {
+      this.handleClassAttack(ws, p, m, now);
     } else if (m.t === "shoot") {
       // --- rate limit shoots ---
       if (now - p.shootWindowStart > POS_WINDOW_MS) {
@@ -337,17 +377,25 @@ export class GameRoom {
         data: { id: building.id, type: building.type, faction: building.faction, x: building.x, z: building.z, hp: building.hp }
       });
     } else if (m.t === "attackBuilding") {
-      // Phase 8: enemy attacks building
+      // Phase 9: class weapon building attack, enemy buildings only.
       const bld = this.buildings.find(b => b.id === m.id);
       if (!bld) return;
       if (bld.faction === p.faction) return; // friendly fire blocked
       const bdef = BUILDINGS[bld.type];
-      if (!bdef) return;
+      const wdef = CLASS_WEAPONS[p.class];
+      if (!bdef || !wdef) return;
+      if (now - (p.lastClassAttackTime || 0) < wdef.cooldown) return;
+      if ((p.stamina || 0) < wdef.staminaCost) return;
       const bdx = bld.x - p.x, bdz = bld.z - p.z;
-      const distSq = bdx * bdx + bdz * bdz;
-      if (distSq > 100) return; // max 10 units to attack building
-      const dmg = clamp(+m.dmg || 10, 1, 50);
+      const dist = len2(bdx, bdz);
+      if (dist > wdef.range) return;
+      const f = yawForward(p.ry);
+      if (dist >= 0.5 && dot2(f.x, f.z, bdx / dist, bdz / dist) < wdef.coneCos) return;
+      p.lastClassAttackTime = now;
+      p.stamina = clamp(p.stamina - wdef.staminaCost, 0, p.maxStamina || STAMINA_CONFIG.max);
+      const dmg = wdef.buildingDamage || Math.ceil(wdef.damage / 2);
       bld.hp -= dmg;
+      this.broadcast({ t: "event", kind: "classAttack", data: { from: ws.id, weapon: wdef.id, buildingId: bld.id, damage: dmg } });
       if (bld.hp <= 0) {
         this.buildings = this.buildings.filter(b => b.id !== bld.id);
         if (this.rallyFlags[bld.faction] === bld.id) {
@@ -368,12 +416,96 @@ export class GameRoom {
     this.players.delete(ws.id);
   }
 
+  handleClassAttack(ws, p, m, now = Date.now()) {
+    const def = CLASS_WEAPONS[p.class];
+    if (!def) return;
+    if (p.dead) return;
+    if (now - (p.lastClassAttackTime || 0) < def.cooldown) return;
+    if ((p.stamina || 0) < def.staminaCost) return;
+
+    const dirX = Number.isFinite(+m.dx) ? +m.dx : yawForward(p.ry).x;
+    const dirZ = Number.isFinite(+m.dz) ? +m.dz : yawForward(p.ry).z;
+    const dirLen = len2(dirX, dirZ);
+    const nx = dirX / dirLen;
+    const nz = dirZ / dirLen;
+
+    // Bow needs a short server-visible draw time. Direct tests may pass drawMs.
+    if (def.mode === "ranged" && (+m.drawMs || 0) < (def.drawTime || 0)) return;
+
+    // Building target path — enemies only, class weapon building damage.
+    if (m.buildingId !== undefined && m.buildingId !== null) {
+      const bld = this.buildings.find(b => b.id === +m.buildingId);
+      if (!bld || bld.faction === p.faction) return;
+      const bx = bld.x - p.x;
+      const bz = bld.z - p.z;
+      const dist = len2(bx, bz);
+      if (dist > def.range) return;
+      if (dist >= 0.5 && dot2(nx, nz, bx / dist, bz / dist) < def.coneCos) return;
+      p.lastClassAttackTime = now;
+      p.stamina = clamp(p.stamina - def.staminaCost, 0, p.maxStamina || STAMINA_CONFIG.max);
+      bld.hp -= def.buildingDamage || Math.ceil(def.damage / 2);
+      this.broadcast({ t: "event", kind: "classAttack", data: { from: ws.id, weapon: def.id, buildingId: bld.id, damage: def.buildingDamage || Math.ceil(def.damage / 2) } });
+      if (bld.hp <= 0) {
+        this.buildings = this.buildings.filter(b => b.id !== bld.id);
+        if (this.rallyFlags[bld.faction] === bld.id) this.rallyFlags[bld.faction] = null;
+        this.broadcast({ t: "event", kind: "buildingDestroyed", data: { id: bld.id, type: bld.type, faction: bld.faction } });
+      }
+      return;
+    }
+
+    const tgt = this.players.get(m.id);
+    if (!tgt || tgt.dead || tgt.ws.id === ws.id) return;
+    if (tgt.faction === p.faction) return; // friendly fire remains blocked
+    const tx = tgt.x - p.x;
+    const tz = tgt.z - p.z;
+    const dist = len2(tx, tz);
+    if (dist > def.range) return;
+    if (dot2(nx, nz, tx / dist, tz / dist) < def.coneCos) return;
+
+    p.lastClassAttackTime = now;
+    p.stamina = clamp(p.stamina - def.staminaCost, 0, p.maxStamina || STAMINA_CONFIG.max);
+    const damageDone = applyClassDamage(tgt, p, def.damage);
+    this.broadcast({ t: "event", kind: "classAttack", data: { from: ws.id, target: tgt.ws.id, weapon: def.id, damage: damageDone } });
+    if (tgt.hp <= 0) {
+      tgt.dead = true;
+      tgt.blocking = false;
+      tgt.deaths++;
+      tgt.respawnAt = Date.now() + RESPAWN_MS;
+      p.kills++;
+      p.score += 10;
+      p.gold += 20;
+      this.broadcast({
+        t: "event",
+        kind: "kill",
+        data: { killer: ws.id, killerName: p.name, victim: tgt.ws.id, victimName: tgt.name, weapon: def.id }
+      });
+    }
+  }
+
   update() {
     const now = Date.now();
     const dt = (now - this.lastTick) / 1000;
     this.lastTick = now;
 
-    // economy: passive income
+    // Phase 9 stamina loop: sprint/block drain, idle regen.
+    for (const p of this.players.values()) {
+      if (p.dead) {
+        p.blocking = false;
+        p.sprinting = false;
+        continue;
+      }
+      if (p.blocking) {
+        p.stamina = clamp((p.stamina ?? STAMINA_CONFIG.max) - STAMINA_CONFIG.blockDrainPerSecond * dt, 0, p.maxStamina || STAMINA_CONFIG.max);
+        if (p.stamina <= 0) p.blocking = false;
+      } else if (p.sprinting) {
+        p.stamina = clamp((p.stamina ?? STAMINA_CONFIG.max) - STAMINA_CONFIG.sprintCostPerSecond * dt, 0, p.maxStamina || STAMINA_CONFIG.max);
+        if (p.stamina <= 0) p.sprinting = false;
+      } else {
+        p.stamina = clamp((p.stamina ?? STAMINA_CONFIG.max) + STAMINA_CONFIG.regenPerSecond * dt, 0, p.maxStamina || STAMINA_CONFIG.max);
+      }
+    }
+
+    // income
     for (const p of this.players.values()) {
       if (now - p.lastIncome >= INCOME_INTERVAL_MS) {
         const cls = CLASSES[p.class];
@@ -583,6 +715,10 @@ export class GameRoom {
         kills: p.kills,
         deaths: p.deaths,
         dead: p.dead,
+        stamina: Math.round((p.stamina ?? STAMINA_CONFIG.max) * 10) / 10,
+        maxStamina: p.maxStamina || STAMINA_CONFIG.max,
+        blocking: !!p.blocking,
+        weapon: CLASS_WEAPONS[p.class]?.id || "unknown",
         anim: p.anim,
         inventory: p.inventory ? { ...p.inventory } : { wood: 0, stone: 0 }
       });
