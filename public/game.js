@@ -244,15 +244,14 @@
     // --- Q2: shoot button (left-top) ---
     var shootBtn = document.createElement("div");
     shootBtn.id = "touchShoot";
-    shootBtn.style.cssText = "position:fixed;left:20px;top:70px;width:72px;height:72px;border-radius:50%;background:rgba(196,69,47,0.65);border:2px solid rgba(255,255,255,0.35);z-index:20;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-family:monospace;touch-action:none";
+    shootBtn.style.cssText = "position:fixed;left:20px;top:70px;width:80px;height:80px;border-radius:50%;background:rgba(196,69,47,0.65);border:2px solid rgba(255,255,255,0.35);z-index:20;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-family:monospace;touch-action:none";
     shootBtn.textContent = "ยิง";
     document.body.appendChild(shootBtn);
 
-    var reloadHint = document.createElement("div");
-    reloadHint.id = "reloadHint";
-    reloadHint.style.cssText = "position:fixed;left:100px;top:85px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace";
-    reloadHint.textContent = "กดค้าง=รีโหลด";
-    document.body.appendChild(reloadHint);
+    var shootHint = document.createElement("div");
+    shootHint.style.cssText = "position:fixed;left:20px;top:155px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace;text-align:center;width:80px";
+    shootHint.textContent = "กดค้าง=ยิงรัว";
+    document.body.appendChild(shootHint);
 
     // --- Q3: crouch button (right-top) ---
     var crouchBtn = document.createElement("div");
@@ -267,14 +266,27 @@
     crouchHint.textContent = "กดค้าง=หมอบ";
     document.body.appendChild(crouchHint);
 
-    // --- Q4: look zone indicator (right-bottom) ---
+    // --- Q4: look zone (right-bottom) ---
     var lookZone = document.createElement("div");
     lookZone.id = "lookZone";
     lookZone.style.cssText = "position:fixed;right:0;bottom:0;width:" + halfW + "px;height:" + halfH + "px;z-index:5;touch-action:none";
     document.body.appendChild(lookZone);
 
+    // --- Q4 buttons: reload + sprint (right-bottom, above look zone) ---
+    var reloadBtn = document.createElement("div");
+    reloadBtn.id = "touchReload";
+    reloadBtn.style.cssText = "position:fixed;right:90px;bottom:20px;width:60px;height:60px;border-radius:50%;background:rgba(224,162,60,0.6);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
+    reloadBtn.textContent = "รีโหลด";
+    document.body.appendChild(reloadBtn);
+
+    var sprintBtn = document.createElement("div");
+    sprintBtn.id = "touchSprint";
+    sprintBtn.style.cssText = "position:fixed;right:160px;bottom:20px;width:56px;height:56px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
+    sprintBtn.textContent = "วิ่ง";
+    document.body.appendChild(sprintBtn);
+
     var lookHint = document.createElement("div");
-    lookHint.style.cssText = "position:fixed;right:20px;bottom:160px;font-size:9px;color:rgba(255,255,255,0.4);z-index:20;font-family:monospace;text-align:right";
+    lookHint.style.cssText = "position:fixed;right:20px;bottom:85px;font-size:9px;color:rgba(255,255,255,0.4);z-index:20;font-family:monospace;text-align:right";
     lookHint.textContent = "ลาก=มอง | แตะ=กระโดด";
     document.body.appendChild(lookHint);
 
@@ -323,35 +335,46 @@
       nub.style.top = (50 + (dy / maxR) * 40) + "%";
     }
 
-    // ===== SHOOT / RELOAD (Q2) =====
-    var shootHoldTimer = null;
+    // ===== SHOOT (Q2 — hold = auto-fire) =====
     shootBtn.addEventListener("touchstart", function (e) {
       e.preventDefault();
       G.touch.shooting = true;
       shoot();
-      // hold > 500ms = reload
-      shootHoldTimer = setTimeout(function () {
-        G.touch.reloading = true;
-        shootBtn.textContent = "รีโหลด";
-        shootBtn.style.background = "rgba(224,162,60,0.7)";
-      }, 500);
+      shootBtn.style.background = "rgba(196,69,47,0.9)";
     }, { passive: false });
 
     shootBtn.addEventListener("touchend", function (e) {
       e.preventDefault();
       G.touch.shooting = false;
-      if (shootHoldTimer) { clearTimeout(shootHoldTimer); shootHoldTimer = null; }
-      if (G.touch.reloading) {
-        G.touch.reloading = false;
-        shootBtn.textContent = "ยิง";
-        shootBtn.style.background = "rgba(196,69,47,0.65)";
-      }
+      shootBtn.style.background = "rgba(196,69,47,0.65)";
     }, { passive: false });
 
     // auto-fire while holding
     var autoFireInterval = setInterval(function () {
-      if (G.touch.shooting && !G.touch.reloading) shoot();
-    }, 250);
+      if (G.touch.shooting) shoot();
+    }, 150);
+
+    // ===== RELOAD (Q4 — right-bottom) =====
+    reloadBtn.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      G.touch.reloading = true;
+      reloadBtn.style.background = "rgba(224,162,60,0.9)";
+      if (typeof toast === "function") toast("รีโหลด...");
+      setTimeout(function () {
+        G.touch.reloading = false;
+        reloadBtn.style.background = "rgba(224,162,60,0.6)";
+        if (typeof toast === "function") toast("รีโหลดเสร็จ");
+      }, 1500);
+    }, { passive: false });
+
+    // ===== SPRINT (Q4 — right-bottom) =====
+    var sprinting = false;
+    sprintBtn.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      sprinting = !sprinting;
+      sprintBtn.style.background = sprinting ? "rgba(74,157,74,0.8)" : "rgba(74,125,168,0.5)";
+      G.touch.sprinting = sprinting;
+    }, { passive: false });
 
     // ===== CROUCH / PRONE (Q3) =====
     var crouchHoldTimer = null;
@@ -431,7 +454,7 @@
 
     // update controls hint
     var ctrl = document.getElementById("controls");
-    if (ctrl) ctrl.textContent = "ซ้ายล่าง:เดิน | ซ้ายบน:ยิง/รีโหลด | ขวาบน:ย่อ/หมอบ | ขวาล่าง:มอง/กระโดด";
+    if (ctrl) ctrl.textContent = "ซ้ายล่าง:เดิน | ซ้ายบน:ยิงรัว | ขวาบน:ย่อ/หมอบ | ขวาล่าง:มอง/กระโดด/รีโหลด/วิ่ง";
   }
 
   // ===== CAMERA TOGGLE =====
