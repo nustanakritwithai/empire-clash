@@ -451,27 +451,11 @@
       });
     });
 
-    // camera toggle button
-    var camBtn = document.createElement("div");
-    camBtn.id = "camToggle";
-    camBtn.style.cssText = "position:fixed;right:20px;top:180px;width:48px;height:48px;border-radius:50%;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);z-index:15;display:flex;align-items:center;justify-content:center;font-size:9px;color:#eee;font-family:monospace;cursor:pointer;touch-action:none";
-    camBtn.textContent = "1st";
-    camBtn.title = "สลับมุมกล้อง (V)";
-    camBtn.addEventListener("click", function () { toggleCamera(); });
-    document.body.appendChild(camBtn);
-
-    // ===== LAYOUT EDIT MODE BUTTON =====
-    var layoutBtn = document.createElement("div");
-    layoutBtn.id = "layoutToggle";
-    layoutBtn.style.cssText = "position:fixed;left:50%;top:10px;transform:translateX(-50%);width:80px;height:28px;border-radius:4px;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);z-index:25;display:flex;align-items:center;justify-content:center;font-size:10px;color:#eee;font-family:monospace;cursor:pointer;touch-action:none";
-    layoutBtn.textContent = "จัดปุ่ม";
-    layoutBtn.addEventListener("click", function () { toggleLayoutMode(); });
-    document.body.appendChild(layoutBtn);
+    // Phase 9.6+: no floating legacy camera/layout buttons; use V for camera and hotbar for actions.
 
     // keyboard hotkey V camera, F/Q alternate class attack. Legacy gun switch/reload hidden after Phase 9.
     window.addEventListener("keydown", function (e) {
       if (e.code === "KeyV") toggleCamera();
-      if (e.code === "KeyR") toast("Phase 9: ไม่มีรีโหลด — ใช้ stamina");
       if (e.code === "Digit1") selectSlot(1);
       if (e.code === "Digit2") selectSlot(2);
       if (e.code === "Digit3") selectSlot(3);
@@ -514,11 +498,11 @@
     var halfW = W / 2;
     var halfH = H / 2;
 
-    // === QUADRANT ZONES ===
-    // Q1 = left-bottom: joystick movement
-    // Q2 = left-top: shoot / hold reload
-    // Q3 = right-top: crouch / hold prone
-    // Q4 = right-bottom: look drag / tap jump
+    // === MOBILE ZONES ===
+    // left-bottom: joystick movement
+    // left-top: primary use of equipped item
+    // right-top: secondary use of equipped item
+    // right-bottom: look drag / tap jump / sprint
 
     // --- Q1: joystick (left-bottom) ---
     var joy = document.createElement("div");
@@ -544,19 +528,18 @@
     shootHint.textContent = "กด=โจมตี / ธนูยิง";
     document.body.appendChild(shootHint);
 
-    // --- Q3: crouch button (right-top) ---
-    var crouchBtn = document.createElement("div");
-    crouchBtn.id = "touchCrouch";
-    crouchBtn.style.cssText = "position:fixed;right:80px;top:70px;width:64px;height:64px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
-    crouchBtn.textContent = "ย่อ";
-    document.body.appendChild(crouchBtn);
-    registerLayoutBtn(crouchBtn, "crouch");
+    // --- Secondary item button (right-top) ---
+    var secondaryBtn = document.createElement("div");
+    secondaryBtn.id = "touchSecondary";
+    secondaryBtn.style.cssText = "position:fixed;right:24px;top:82px;width:72px;height:72px;border-radius:50%;background:rgba(74,125,168,0.55);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-family:monospace;touch-action:none";
+    secondaryBtn.textContent = "รอง";
+    document.body.appendChild(secondaryBtn);
 
-    var crouchHint = document.createElement("div");
-    crouchHint.id = "crouchHint";
-    crouchHint.style.cssText = "position:fixed;right:80px;top:140px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace;text-align:center;width:64px";
-    crouchHint.textContent = "กดค้าง=หมอบ";
-    document.body.appendChild(crouchHint);
+    var secondaryHint = document.createElement("div");
+    secondaryHint.id = "secondaryHint";
+    secondaryHint.style.cssText = "position:fixed;right:16px;top:158px;font-size:9px;color:rgba(255,255,255,0.55);z-index:20;font-family:monospace;text-align:center;width:88px";
+    secondaryHint.textContent = "โล่/เล็ง/หมุน";
+    document.body.appendChild(secondaryHint);
 
     // --- Q4: look zone (right-bottom) ---
     var lookZone = document.createElement("div");
@@ -564,14 +547,7 @@
     lookZone.style.cssText = "position:fixed;right:0;bottom:0;width:" + halfW + "px;height:" + halfH + "px;z-index:5;touch-action:none";
     document.body.appendChild(lookZone);
 
-    // --- Q4 buttons: reload + sprint (right-bottom, above look zone) ---
-    var reloadBtn = document.createElement("div");
-    reloadBtn.id = "touchReload";
-    reloadBtn.style.cssText = "position:fixed;right:90px;bottom:20px;width:60px;height:60px;border-radius:50%;background:rgba(224,162,60,0.6);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
-    reloadBtn.textContent = "รีโหลด";
-    document.body.appendChild(reloadBtn);
-    registerLayoutBtn(reloadBtn, "reload");
-
+    // --- Sprint button (right-bottom, above look zone) ---
     var sprintBtn = document.createElement("div");
     sprintBtn.id = "touchSprint";
     sprintBtn.style.cssText = "position:fixed;right:160px;bottom:20px;width:56px;height:56px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
@@ -646,23 +622,9 @@
       shootBtn.style.background = "rgba(196,69,47,0.65)";
     }, { passive: false });
 
-    // auto-fire while holding (use weapon fireRate, not fixed 150ms)
-    var autoFireInterval = setInterval(function () {
-      if (G.touch.shooting && currentWeapon().auto) shoot();
-    }, 50);
+    // auto-fire removed with legacy gun buttons; hotbar primary action handles equipped item.
 
-    // ===== RELOAD (Q4 — right-bottom) =====
-    reloadBtn.addEventListener("touchstart", function (e) {
-      if (layoutMode) return;
-      e.preventDefault();
-      startReload();
-      reloadBtn.style.background = "rgba(224,162,60,0.9)";
-      setTimeout(function () {
-        reloadBtn.style.background = "rgba(224,162,60,0.6)";
-      }, currentWeapon().reloadTime);
-    }, { passive: false });
-
-    // ===== SPRINT (Q4 — right-bottom) =====
+    // ===== SPRINT (right-bottom) =====
     var sprinting = false;
     sprintBtn.addEventListener("touchstart", function (e) {
       if (layoutMode) return;
@@ -672,83 +634,40 @@
       G.touch.sprinting = sprinting;
     }, { passive: false });
 
-    // ===== CROUCH / PRONE (Q3 — toggle, stays until pressed again) =====
-    // 1 tap = crouch (stays), 2nd tap = prone (stays), 3rd tap = stand
-    var crouchState = 0; // 0=stand, 1=crouch, 2=prone
-    crouchBtn.addEventListener("touchstart", function (e) {
-      if (layoutMode) return; // skip game action in layout mode
+    // ===== SECONDARY ITEM ACTION (right-top) =====
+    function updateSecondaryButton(active) {
+      var item = currentEquippedItem();
+      secondaryBtn.textContent = item.secondaryAction === "block" ? "โล่" : (item.secondaryAction === "aim" ? "เล็ง" : (item.itemType === "blueprint" ? "หมุน" : "รอง"));
+      secondaryBtn.style.background = active ? "rgba(74,157,74,0.85)" : "rgba(74,125,168,0.55)";
+    }
+    secondaryBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
       e.preventDefault();
-      crouchState = (crouchState + 1) % 3;
-      if (crouchState === 0) {
-        // stand
-        G.touch.crouching = false;
-        G.touch.prone = false;
-        crouchBtn.textContent = "ย่อ";
-        crouchBtn.style.background = "rgba(74,125,168,0.5)";
-      } else if (crouchState === 1) {
-        // crouch — stays
-        G.touch.crouching = true;
-        G.touch.prone = false;
-        crouchBtn.textContent = "ย่อ";
-        crouchBtn.style.background = "rgba(74,157,74,0.7)";
+      var item = currentEquippedItem();
+      if (item.secondaryAction === "block") {
+        G.blocking = true;
+        netSend({ t: "block", active: true });
+        updateSecondaryButton(true);
+      } else if (item.secondaryAction === "aim") {
+        toggleZoom();
+        updateSecondaryButton(G.zooming);
+      } else if (item.itemType === "blueprint") {
+        toast("หมุน/ยกเลิกแบบก่อสร้าง (placeholder)");
+        updateSecondaryButton(false);
       } else {
-        // prone — stays
-        G.touch.crouching = false;
-        G.touch.prone = true;
-        crouchBtn.textContent = "หมอบ";
-        crouchBtn.style.background = "rgba(90,60,40,0.8)";
+        toast("ไอเทมนี้ไม่มีใช้รอง");
       }
     }, { passive: false });
-
-    // ===== WEAPON SWITCH BUTTONS (top-center) =====
-    var wpnBar = document.createElement("div");
-    wpnBar.id = "weaponBar";
-    wpnBar.style.cssText = "position:fixed;top:50px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:15";
-    document.body.appendChild(wpnBar);
-    WEAPON_KEYS.forEach(function (wk, i) {
-      var wb = document.createElement("div");
-      wb.id = "wpnBtn" + i;
-      wb.style.cssText = "padding:5px 12px;background:rgba(20,20,40,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:#aaa;font-family:monospace;font-size:10px;cursor:pointer;touch-action:none";
-      wb.textContent = (i + 1) + " " + WEAPONS[wk].name;
-      wb.addEventListener("touchstart", function (e) {
-        e.preventDefault();
-        switchWeapon(i);
-      }, { passive: false });
-      wb.addEventListener("click", function () { switchWeapon(i); });
-      wpnBar.appendChild(wb);
-      registerLayoutBtn(wb, "wpn" + i);
-    });
-
-    // ===== ZOOM / AIM BUTTON (right side, above reload) =====
-    var zoomBtn = document.createElement("div");
-    zoomBtn.id = "touchZoom";
-    zoomBtn.style.cssText = "position:fixed;right:90px;bottom:90px;width:56px;height:56px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
-    zoomBtn.textContent = "เล็ง";
-    document.body.appendChild(zoomBtn);
-    registerLayoutBtn(zoomBtn, "zoom");
-    zoomBtn.addEventListener("touchstart", function (e) {
+    secondaryBtn.addEventListener("touchend", function (e) {
       if (layoutMode) return;
       e.preventDefault();
-      toggleZoom();
-      zoomBtn.style.background = G.zooming ? "rgba(74,157,74,0.8)" : "rgba(74,125,168,0.5)";
+      if (G.blocking) {
+        G.blocking = false;
+        netSend({ t: "block", active: false });
+      }
+      updateSecondaryButton(false);
     }, { passive: false });
-    zoomBtn.addEventListener("click", function () { toggleZoom(); });
-
-    // ===== MELEE / KNIFE BUTTON (left side, above shoot) =====
-    var meleeBtn = document.createElement("div");
-    meleeBtn.id = "touchMelee";
-    meleeBtn.style.cssText = "position:fixed;left:110px;top:70px;width:60px;height:60px;border-radius:50%;background:rgba(180,80,80,0.6);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
-    meleeBtn.textContent = "มีด";
-    document.body.appendChild(meleeBtn);
-    registerLayoutBtn(meleeBtn, "melee");
-    meleeBtn.addEventListener("touchstart", function (e) {
-      if (layoutMode) return;
-      e.preventDefault();
-      melee();
-      meleeBtn.style.background = "rgba(180,80,80,0.9)";
-      setTimeout(function () { meleeBtn.style.background = "rgba(180,80,80,0.6)"; }, 200);
-    }, { passive: false });
-    meleeBtn.addEventListener("click", function () { melee(); });
+    setInterval(function () { updateSecondaryButton(G.blocking || G.zooming); }, 500);
 
     // ===== LOOK / JUMP (Q4) =====
     lookZone.addEventListener("touchstart", function (e) {
@@ -805,7 +724,7 @@
 
     // update controls hint
     var ctrl = document.getElementById("controls");
-    if (ctrl) ctrl.textContent = "ซ้ายล่าง:เดิน | ซ้ายบน:ยิงรัว | ขวาบน:ย่อ/หมอบ | ขวาล่าง:มอง/กระโดด/รีโหลด/วิ่ง";
+    if (ctrl) ctrl.textContent = "ซ้ายล่าง:เดิน | ซ้ายบน:ใช้ของ | ขวาบน:ใช้รอง | ขวาล่าง:มอง/กระโดด/วิ่ง | แตะ hotbar เพื่อเปลี่ยนของ";
   }
 
   // ===== LAYOUT EDIT MODE =====
@@ -873,7 +792,7 @@
       }
       window._layoutHelp.style.display = "block";
     } else {
-      btn.textContent = "จัดปุ่ม";
+      btn.textContent = "บันทึกตำแหน่ง";
       btn.style.background = "rgba(0,0,0,0.6)";
       // disable + save
       layoutBtns.forEach(function (b) {
@@ -1058,28 +977,7 @@
     if (right) right.style.left = gap + "px";
   }
 
-  function startReload() {
-    var w = currentWeapon();
-    var ammo = currentAmmo();
-    if (ammo.reloading) return;
-    if (ammo.mag >= w.mag) return;
-    if (ammo.reserve <= 0) return;
-    ammo.reloading = true;
-    ammo.reloadStart = Date.now();
-    toast("รีโหลด " + w.name + "...");
-  }
-
-  function finishReload() {
-    var w = currentWeapon();
-    var ammo = currentAmmo();
-    if (!ammo.reloading) return;
-    var needed = w.mag - ammo.mag;
-    var take = Math.min(needed, ammo.reserve);
-    ammo.mag += take;
-    ammo.reserve -= take;
-    ammo.reloading = false;
-    updateAmmoDisplay();
-  }
+  // Legacy reload removed from player flow; equipment/hotbar uses stamina and item actions.
 
   function updateAmmoDisplay() {
     var el = document.getElementById("actionDisplay") || document.getElementById("ammoDisplay");
@@ -1090,13 +988,6 @@
     var block = me && me.blocking ? " | โล่: ยก" : "";
     el.innerHTML = w.name + "<br>STA " + stamina + block + "<br><span style='font-size:11px;color:#ccc'>" + w.action + "</span>";
     el.style.color = me && me.stamina < 20 ? "#e0584a" : "#eee";
-  }
-
-  function updateReload() {
-    var ammo = currentAmmo();
-    if (!ammo.reloading) return;
-    var w = currentWeapon();
-    if (Date.now() - ammo.reloadStart >= w.reloadTime) finishReload();
   }
 
   // ===== PHASE 9 CLASS ATTACK =====
@@ -1610,7 +1501,6 @@
     updateUnits(dt);
     updateBullets(dt);
     processEvents();
-    updateReload();
 
     // recoil recovery
     if (G.currentRecoil > 0) {
@@ -1631,21 +1521,7 @@
     // dynamic crosshair (gap reflects spread + recoil)
     updateCrosshair();
 
-    // weapon bar highlight
-    for (var wi = 0; wi < 3; wi++) {
-      var btn = document.getElementById("wpnBtn" + wi);
-      if (btn) {
-        if (wi === G.weaponIdx) {
-          btn.style.borderColor = "#e0a23c";
-          btn.style.color = "#e0a23c";
-          btn.style.background = "rgba(224,162,60,0.2)";
-        } else {
-          btn.style.borderColor = "rgba(255,255,255,0.2)";
-          btn.style.color = "#aaa";
-          btn.style.background = "rgba(20,20,40,0.7)";
-        }
-      }
-    }
+    // legacy weapon bar removed; hotbar owns selected-item highlight.
 
     // camera follows player
     G.camera.rotation.order = "YXZ";
@@ -1688,7 +1564,6 @@
     updateResourceHud();
     updateAmmoDisplay();
     updateBuildings();
-    updateBuildMenu();
 
     G.renderer.render(G.scene, G.camera);
   }
@@ -1963,11 +1838,6 @@
     });
   }
 
-  function updateBuildMenu() {
-    var menu = document.getElementById("buildMenu");
-    if (menu) menu.style.display = "none";
-  }
-
   // Build placement via equipped blueprint hotbar item
   // Place at player's current position + small offset in facing direction
   function tryBuild(buildingType) {
@@ -2061,11 +1931,7 @@
     });
   });
 
-  // Build menu click handlers
-  var bw = document.getElementById("buildWall");
-  if (bw) bw.addEventListener("click", function () { tryBuild("wooden_wall"); });
-  var bf = document.getElementById("buildFlag");
-  if (bf) bf.addEventListener("click", function () { tryBuild("rally_flag"); });
+  // Build buttons removed; Commander builds via equipped blueprint hotbar item.
 
   window.toast = function (text) {
     var div = document.createElement("div");
