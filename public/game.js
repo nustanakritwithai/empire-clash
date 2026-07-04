@@ -209,36 +209,76 @@
 
   // ===== TOUCH CONTROLS (mobile) =====
   function initTouchControls() {
-    G.touch = { joyActive: false, joyX: 0, joyY: 0, joyId: null, lookId: null, lookX: 0, lookY: 0 };
+    G.touch = {
+      joyActive: false, joyX: 0, joyY: 0, joyId: null,
+      lookId: null, lookX: 0, lookY: 0,
+      shooting: false, reloading: false,
+      crouching: false,
+      jumpTriggered: false,
+      sprinting: false
+    };
     var isMobile = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+    if (!isMobile) return;
 
-    if (!isMobile) return; // desktop uses keyboard+mouse
+    var W = window.innerWidth;
+    var H = window.innerHeight;
+    var halfW = W / 2;
+    var halfH = H / 2;
 
-    // create joystick UI
+    // === QUADRANT ZONES ===
+    // Q1 = left-bottom: joystick movement
+    // Q2 = left-top: shoot / hold reload
+    // Q3 = right-top: crouch / hold prone
+    // Q4 = right-bottom: look drag / tap jump
+
+    // --- Q1: joystick (left-bottom) ---
     var joy = document.createElement("div");
     joy.id = "touchJoy";
-    joy.style.cssText = "position:fixed;left:20px;bottom:20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,0.1);border:2px solid rgba(255,255,255,0.3);z-index:20;touch-action:none";
+    joy.style.cssText = "position:fixed;left:20px;bottom:20px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.25);z-index:20;touch-action:none";
     var nub = document.createElement("div");
     nub.id = "touchNub";
-    nub.style.cssText = "position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(255,255,255,0.3);border:1px solid rgba(255,255,255,0.4)";
+    nub.style.cssText = "position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.4)";
     joy.appendChild(nub);
     document.body.appendChild(joy);
 
-    // shoot button
+    // --- Q2: shoot button (left-top) ---
     var shootBtn = document.createElement("div");
     shootBtn.id = "touchShoot";
-    shootBtn.style.cssText = "position:fixed;right:20px;bottom:80px;width:72px;height:72px;border-radius:50%;background:rgba(196,69,47,0.7);border:2px solid rgba(255,255,255,0.4);z-index:20;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-family:monospace;touch-action:none";
+    shootBtn.style.cssText = "position:fixed;left:20px;top:70px;width:72px;height:72px;border-radius:50%;background:rgba(196,69,47,0.65);border:2px solid rgba(255,255,255,0.35);z-index:20;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-family:monospace;touch-action:none";
     shootBtn.textContent = "ยิง";
     document.body.appendChild(shootBtn);
 
-    // jump/sprint button
-    var sprintBtn = document.createElement("div");
-    sprintBtn.id = "touchSprint";
-    sprintBtn.style.cssText = "position:fixed;right:100px;bottom:20px;width:56px;height:56px;border-radius:50%;background:rgba(74,125,168,0.6);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
-    sprintBtn.textContent = "วิ่ง";
-    document.body.appendChild(sprintBtn);
+    var reloadHint = document.createElement("div");
+    reloadHint.id = "reloadHint";
+    reloadHint.style.cssText = "position:fixed;left:100px;top:85px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace";
+    reloadHint.textContent = "กดค้าง=รีโหลด";
+    document.body.appendChild(reloadHint);
 
-    // joystick touch
+    // --- Q3: crouch button (right-top) ---
+    var crouchBtn = document.createElement("div");
+    crouchBtn.id = "touchCrouch";
+    crouchBtn.style.cssText = "position:fixed;right:80px;top:70px;width:64px;height:64px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
+    crouchBtn.textContent = "ย่อ";
+    document.body.appendChild(crouchBtn);
+
+    var crouchHint = document.createElement("div");
+    crouchHint.id = "crouchHint";
+    crouchHint.style.cssText = "position:fixed;right:80px;top:140px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace;text-align:center;width:64px";
+    crouchHint.textContent = "กดค้าง=หมอบ";
+    document.body.appendChild(crouchHint);
+
+    // --- Q4: look zone indicator (right-bottom) ---
+    var lookZone = document.createElement("div");
+    lookZone.id = "lookZone";
+    lookZone.style.cssText = "position:fixed;right:0;bottom:0;width:" + halfW + "px;height:" + halfH + "px;z-index:5;touch-action:none";
+    document.body.appendChild(lookZone);
+
+    var lookHint = document.createElement("div");
+    lookHint.style.cssText = "position:fixed;right:20px;bottom:160px;font-size:9px;color:rgba(255,255,255,0.4);z-index:20;font-family:monospace;text-align:right";
+    lookHint.textContent = "ลาก=มอง | แตะ=กระโดด";
+    document.body.appendChild(lookHint);
+
+    // ===== JOYSTICK (Q1) =====
     joy.addEventListener("touchstart", function (e) {
       e.preventDefault();
       var t = e.changedTouches[0];
@@ -273,8 +313,7 @@
       var rect = joy.getBoundingClientRect();
       var cx = rect.left + rect.width / 2;
       var cy = rect.top + rect.height / 2;
-      var dx = tx - cx;
-      var dy = ty - cy;
+      var dx = tx - cx, dy = ty - cy;
       var d = Math.sqrt(dx * dx + dy * dy);
       var maxR = rect.width / 2;
       if (d > maxR) { dx = (dx / d) * maxR; dy = (dy / d) * maxR; }
@@ -284,21 +323,77 @@
       nub.style.top = (50 + (dy / maxR) * 40) + "%";
     }
 
-    // look (drag on right half of screen)
-    var canvas = G.renderer.domElement;
-    canvas.addEventListener("touchstart", function (e) {
+    // ===== SHOOT / RELOAD (Q2) =====
+    var shootHoldTimer = null;
+    shootBtn.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      G.touch.shooting = true;
+      shoot();
+      // hold > 500ms = reload
+      shootHoldTimer = setTimeout(function () {
+        G.touch.reloading = true;
+        shootBtn.textContent = "รีโหลด";
+        shootBtn.style.background = "rgba(224,162,60,0.7)";
+      }, 500);
+    }, { passive: false });
+
+    shootBtn.addEventListener("touchend", function (e) {
+      e.preventDefault();
+      G.touch.shooting = false;
+      if (shootHoldTimer) { clearTimeout(shootHoldTimer); shootHoldTimer = null; }
+      if (G.touch.reloading) {
+        G.touch.reloading = false;
+        shootBtn.textContent = "ยิง";
+        shootBtn.style.background = "rgba(196,69,47,0.65)";
+      }
+    }, { passive: false });
+
+    // auto-fire while holding
+    var autoFireInterval = setInterval(function () {
+      if (G.touch.shooting && !G.touch.reloading) shoot();
+    }, 250);
+
+    // ===== CROUCH / PRONE (Q3) =====
+    var crouchHoldTimer = null;
+    crouchBtn.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      G.touch.crouching = true;
+      crouchBtn.style.background = "rgba(74,157,74,0.6)";
+      crouchBtn.textContent = "ย่อ";
+      // hold > 600ms = prone
+      crouchHoldTimer = setTimeout(function () {
+        G.touch.prone = true;
+        crouchBtn.textContent = "หมอบ";
+        crouchBtn.style.background = "rgba(90,60,40,0.7)";
+      }, 600);
+    }, { passive: false });
+
+    crouchBtn.addEventListener("touchend", function (e) {
+      e.preventDefault();
+      G.touch.crouching = false;
+      G.touch.prone = false;
+      if (crouchHoldTimer) { clearTimeout(crouchHoldTimer); crouchHoldTimer = null; }
+      crouchBtn.style.background = "rgba(74,125,168,0.5)";
+      crouchBtn.textContent = "ย่อ";
+    }, { passive: false });
+
+    // ===== LOOK / JUMP (Q4) =====
+    lookZone.addEventListener("touchstart", function (e) {
       e.preventDefault();
       for (var i = 0; i < e.changedTouches.length; i++) {
         var t = e.changedTouches[i];
-        if (t.clientX > window.innerWidth / 2 && G.touch.lookId === null) {
+        if (G.touch.lookId === null) {
           G.touch.lookId = t.identifier;
           G.touch.lookX = t.clientX;
           G.touch.lookY = t.clientY;
+          G.touch.lookStartX = t.clientX;
+          G.touch.lookStartY = t.clientY;
+          G.touch.lookMoved = false;
         }
       }
     }, { passive: false });
 
-    canvas.addEventListener("touchmove", function (e) {
+    lookZone.addEventListener("touchmove", function (e) {
       e.preventDefault();
       for (var i = 0; i < e.changedTouches.length; i++) {
         var t = e.changedTouches[i];
@@ -310,41 +405,33 @@
           G.pitch = Math.max(-1.5, Math.min(1.5, G.pitch));
           G.touch.lookX = t.clientX;
           G.touch.lookY = t.clientY;
+          // track if moved enough (to distinguish tap=jump from drag=look)
+          var totalMove = Math.abs(t.clientX - G.touch.lookStartX) + Math.abs(t.clientY - G.touch.lookStartY);
+          if (totalMove > 15) G.touch.lookMoved = true;
         }
       }
     }, { passive: false });
 
-    canvas.addEventListener("touchend", function (e) {
+    lookZone.addEventListener("touchend", function (e) {
       e.preventDefault();
       for (var i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i].identifier === G.touch.lookId) {
+          // tap (no significant move) = jump
+          if (!G.touch.lookMoved) {
+            G.touch.jumpTriggered = true;
+          }
           G.touch.lookId = null;
         }
       }
     }, { passive: false });
 
-    // shoot button
-    shootBtn.addEventListener("touchstart", function (e) {
-      e.preventDefault();
-      shoot();
-    }, { passive: false });
-
-    // sprint button
-    var sprinting = false;
-    sprintBtn.addEventListener("touchstart", function (e) {
-      e.preventDefault();
-      sprinting = !sprinting;
-      sprintBtn.style.background = sprinting ? "rgba(74,157,74,0.8)" : "rgba(74,125,168,0.6)";
-      G.touch.sprinting = sprinting;
-    }, { passive: false });
-
-    // hide crosshair on mobile (using center dot instead)
+    // hide crosshair on mobile
     var ch = document.getElementById("crosshair");
     if (ch) ch.style.display = "none";
 
-    // hide controls hint
+    // update controls hint
     var ctrl = document.getElementById("controls");
-    if (ctrl) ctrl.textContent = "จอยซ้ายเดิน | ลากขวามอง | ปุ่มยิง | ปุ่มวิ่ง";
+    if (ctrl) ctrl.textContent = "ซ้ายล่าง:เดิน | ซ้ายบน:ยิง/รีโหลด | ขวาบน:ย่อ/หมอบ | ขวาล่าง:มอง/กระโดด";
   }
 
   // ===== CAMERA TOGGLE =====
@@ -407,7 +494,18 @@
   function updateMovement(dt) {
     if (G.dead) return;
     var speed = G.player.speed || 5.5;
-    if (G.touch && G.touch.sprinting) speed *= 1.6;
+
+    // crouch = slower, prone = slowest
+    if (G.touch) {
+      if (G.touch.prone) speed *= 0.3;
+      else if (G.touch.crouching) speed *= 0.5;
+      if (G.touch.sprinting) speed *= 1.6;
+    }
+
+    // keyboard crouch (Ctrl) and prone (C)
+    if (G.keys["ControlLeft"] || G.keys["ControlRight"]) speed *= 0.5;
+    if (G.keys["KeyC"]) speed *= 0.3;
+
     var fwd = new THREE.Vector3(-Math.sin(G.yaw), 0, -Math.cos(G.yaw));
     var right = new THREE.Vector3(Math.cos(G.yaw), 0, -Math.sin(G.yaw));
     var move = new THREE.Vector3();
@@ -420,7 +518,6 @@
 
     // touch joystick
     if (G.touch && G.touch.joyActive) {
-      // joyY negative = forward (up on screen = forward)
       if (G.touch.joyY < -0.1) move.add(fwd.clone().multiplyScalar(-G.touch.joyY));
       if (G.touch.joyY > 0.1) move.sub(fwd.clone().multiplyScalar(G.touch.joyY));
       if (G.touch.joyX < -0.1) move.sub(right.clone().multiplyScalar(-G.touch.joyX));
@@ -431,12 +528,39 @@
       move.normalize().multiplyScalar(speed * dt);
       var nx = G.player.x + move.x;
       var nz = G.player.z + move.z;
-      // collision with buildings
       if (!checkCollision(nx, G.player.z)) G.player.x = nx;
       if (!checkCollision(G.player.x, nz)) G.player.z = nz;
-      // world bounds
       G.player.x = Math.max(-98, Math.min(98, G.player.x));
       G.player.z = Math.max(-98, Math.min(98, G.player.z));
+    }
+
+    // ===== JUMP =====
+    if (G.touch && G.touch.jumpTriggered) {
+      G.touch.jumpTriggered = false;
+      if (G.player.y <= 1.7) G.player.vy = 6.0; // jump velocity
+    }
+    // keyboard jump (Space)
+    if (G.keys["Space"] && G.player.y <= 1.7) {
+      G.player.vy = 6.0;
+    }
+    // apply gravity + vertical movement
+    if (G.player.vy != null) {
+      G.player.y += G.player.vy * dt;
+      G.player.vy -= 18 * dt; // gravity
+      if (G.player.y <= 1.6) { G.player.y = 1.6; G.player.vy = 0; }
+    }
+
+    // crouch/prone affects camera height
+    var targetY = 1.6;
+    if (G.touch) {
+      if (G.touch.prone) targetY = 0.8;
+      else if (G.touch.crouching) targetY = 1.1;
+    }
+    if (G.keys["ControlLeft"] || G.keys["ControlRight"]) targetY = 1.1;
+    if (G.keys["KeyC"]) targetY = 0.8;
+    // smooth camera height transition
+    if (!G.player.vy || G.player.vy === 0) {
+      G.player.y += (targetY - G.player.y) * Math.min(1, dt * 8);
     }
 
     // send position
