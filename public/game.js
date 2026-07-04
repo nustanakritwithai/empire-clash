@@ -376,28 +376,31 @@
       G.touch.sprinting = sprinting;
     }, { passive: false });
 
-    // ===== CROUCH / PRONE (Q3) =====
-    var crouchHoldTimer = null;
+    // ===== CROUCH / PRONE (Q3 — toggle, stays until pressed again) =====
+    // 1 tap = crouch (stays), 2nd tap = prone (stays), 3rd tap = stand
+    var crouchState = 0; // 0=stand, 1=crouch, 2=prone
     crouchBtn.addEventListener("touchstart", function (e) {
       e.preventDefault();
-      G.touch.crouching = true;
-      crouchBtn.style.background = "rgba(74,157,74,0.6)";
-      crouchBtn.textContent = "ย่อ";
-      // hold > 600ms = prone
-      crouchHoldTimer = setTimeout(function () {
+      crouchState = (crouchState + 1) % 3;
+      if (crouchState === 0) {
+        // stand
+        G.touch.crouching = false;
+        G.touch.prone = false;
+        crouchBtn.textContent = "ย่อ";
+        crouchBtn.style.background = "rgba(74,125,168,0.5)";
+      } else if (crouchState === 1) {
+        // crouch — stays
+        G.touch.crouching = true;
+        G.touch.prone = false;
+        crouchBtn.textContent = "ย่อ";
+        crouchBtn.style.background = "rgba(74,157,74,0.7)";
+      } else {
+        // prone — stays
+        G.touch.crouching = false;
         G.touch.prone = true;
         crouchBtn.textContent = "หมอบ";
-        crouchBtn.style.background = "rgba(90,60,40,0.7)";
-      }, 600);
-    }, { passive: false });
-
-    crouchBtn.addEventListener("touchend", function (e) {
-      e.preventDefault();
-      G.touch.crouching = false;
-      G.touch.prone = false;
-      if (crouchHoldTimer) { clearTimeout(crouchHoldTimer); crouchHoldTimer = null; }
-      crouchBtn.style.background = "rgba(74,125,168,0.5)";
-      crouchBtn.textContent = "ย่อ";
+        crouchBtn.style.background = "rgba(90,60,40,0.8)";
+      }
     }, { passive: false });
 
     // ===== LOOK / JUMP (Q4) =====
