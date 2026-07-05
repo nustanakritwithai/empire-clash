@@ -24,6 +24,8 @@ ok('sword action hint is slash', gameJs.includes('ยิง/คลิก: ฟั
 ok('build sends clamped/near placement marker', gameJs.includes('clampBuildPlacement') && gameJs.includes('BUILD_PLACE_DISTANCE'));
 ok('build preview has approximate red/green validity', gameJs.includes('buildPlacementApproxValid') && gameJs.includes('0xff4444') && gameJs.includes('0x55ff66'));
 
+ok('sword empty swing sends miss instead of target error marker', gameJs.includes('payload.swing = true'));
+
 const room = new GameRoom();
 clearInterval(room.timer);
 const worker = join(room,'Worker','worker','ironhold');
@@ -82,6 +84,12 @@ const hp0 = enemy.p.hp;
 send(room, inf.ws, {t:'classAttack', id:enemy.ws.id, dx:0, dz:-1});
 ok('sword swing consumes stamina', inf.p.stamina < sta0);
 ok('sword swing damages enemy in range/cone', enemy.p.hp < hp0 && !!latest(inf.ws,'classAttack'));
+reset(inf.p);
+const staMiss = inf.p.stamina;
+send(room, inf.ws, {t:'classAttack', swing:true, dx:0, dz:-1});
+const missEvent = latest(inf.ws, 'classAttack');
+ok('empty sword swing becomes miss feedback, not target error', !!missEvent && missEvent.data.damage === 0 && missEvent.data.reason === 'miss');
+ok('empty sword swing still consumes stamina/cooldown', inf.p.stamina < staMiss);
 reset(inf.p); reset(enemy.p); enemy.p.hp=enemy.p.maxHp;
 setPos(inf.p,0,0,0); setPos(enemy.p,6,0,Math.PI);
 const hpOut = enemy.p.hp;

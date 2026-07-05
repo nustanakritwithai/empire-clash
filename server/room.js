@@ -503,7 +503,15 @@ export class GameRoom {
     }
 
     const tgt = this.players.get(m.id);
-    if (!tgt || tgt.dead || tgt.ws.id === ws.id) return rejectAttack("ไม่พบเป้าหมาย");
+    if (!tgt || tgt.dead || tgt.ws.id === ws.id) {
+      if (m.swing && (item?.itemType === "melee" || item?.itemType === "tool" || item?.itemType === "shield")) {
+        p.lastClassAttackTime = now;
+        p.stamina = clamp(p.stamina - def.staminaCost, 0, p.maxStamina || STAMINA_CONFIG.max);
+        this.broadcast({ t: "event", kind: "classAttack", data: { from: ws.id, target: null, weapon: def.id, damage: 0, blocked: false, reason: "miss" } });
+        return;
+      }
+      return rejectAttack("ไม่พบเป้าหมาย");
+    }
     if (tgt.faction === p.faction) return rejectAttack("ห้ามตีพวกเดียวกัน"); // friendly fire remains blocked
     const tx = tgt.x - p.x;
     const tz = tgt.z - p.z;

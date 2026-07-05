@@ -1148,6 +1148,7 @@
     var payload = { t: "classAttack", dx: camDir.x, dz: camDir.z };
     if (hitId && hitDist <= buildingDist) payload.id = hitId;
     else if (buildingId !== null) payload.buildingId = buildingId;
+    else if (item.itemType === "melee" || item.itemType === "tool" || item.itemType === "shield") payload.swing = true;
     if (G.playerClass === "archer") payload.drawMs = 400;
     netSend(payload);
 
