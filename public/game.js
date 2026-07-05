@@ -68,17 +68,50 @@
     return item || loadout.find(function (it) { return it.slot === slot; }) || loadout[0] || { id: "sword", displayName: "Sword", slot: 1, itemType: "melee", primaryAction: "melee", secondaryAction: "none" };
   }
 
+  var ITEM_LABELS = {
+    sword: { name: "ดาบ", short: "ดาบ", icon: "⚔" },
+    commander_sword: { name: "ดาบ", short: "ดาบ", icon: "⚔" },
+    shield: { name: "โล่", short: "โล่", icon: "🛡" },
+    bow: { name: "ธนู", short: "ธนู", icon: "🏹" },
+    axe: { name: "ขวาน", short: "ขวาน", icon: "🪓" },
+    pickaxe: { name: "พลั่ว", short: "พลั่ว", icon: "⛏" },
+    wall_blueprint: { name: "แปลนกำแพง", short: "กำแพง", icon: "▦" },
+    rally_blueprint: { name: "ธงรวมพล", short: "ธง", icon: "⚑" }
+  };
+
+  function itemThaiName(item) {
+    var meta = item && ITEM_LABELS[item.id];
+    return (meta && meta.name) || (item && (item.displayName || item.id)) || "-";
+  }
+
+  function itemShortLabel(item) {
+    var meta = item && ITEM_LABELS[item.id];
+    if (!item) return { icon: "", text: "-" };
+    return { icon: (meta && meta.icon) || "•", text: (meta && meta.short) || (item.displayName || item.id || "?") };
+  }
+
+  function itemActionHint(item) {
+    if (!item) return "เลือกของจาก hotbar";
+    if (item.id === "shield") return "คลิก=กระแทก | คลิกขวา/รอง=ยกโล่";
+    if (item.id === "bow") return "คลิก=ยิง | คลิกขวา/รอง=เล็ง";
+    if (item.id === "axe") return "คลิก=ตี | E ใกล้ต้นไม้=เก็บไม้";
+    if (item.id === "pickaxe") return "คลิก=ตี | E ใกล้หิน=เก็บหิน";
+    if (item.id === "wall_blueprint") return "คลิก: วางกำแพง";
+    if (item.id === "rally_blueprint") return "คลิก: วางธงรวมพล";
+    return "คลิก=โจมตี";
+  }
+
   function currentClassWeapon() {
     var item = currentEquippedItem();
     var labels = {
-      sword: { name: "ดาบ", action: "คลิก=ฟัน", color: 0xd8d0b0, projectile: false, range: 4.8, cooldown: 650 },
-      shield: { name: "โล่", action: "คลิก=กระแทก | คลิกขวา=ยกโล่", color: 0x777766, projectile: false, range: 3.2, cooldown: 800 },
-      bow: { name: "ธนู", action: "คลิก=ยิง | คลิกขวา=เล็ง", color: 0x8b5a2b, projectile: true, range: 85, cooldown: 900 },
-      axe: { name: "ขวาน", action: "คลิก=ตี | E=เก็บไม้", color: 0xe0a23c, projectile: false, range: 3.8, cooldown: 850 },
-      pickaxe: { name: "พลั่ว", action: "คลิก=ตี | E=ขุดหิน", color: 0x9aa0a6, projectile: false, range: 3.8, cooldown: 850 },
-      commander_sword: { name: "ดาบแม่ทัพ", action: "คลิก=ฟัน", color: 0xc4452f, projectile: false, range: 4.5, cooldown: 750 },
-      wall_blueprint: { name: "แบบกำแพง", action: "คลิก=วางกำแพง | คลิกขวา=หมุน", color: 0x8b6b3f, projectile: false, range: 8, cooldown: 500 },
-      rally_blueprint: { name: "แบบธง", action: "คลิก=วางธง | คลิกขวา=หมุน", color: 0xc4452f, projectile: false, range: 8, cooldown: 1000 }
+      sword: { name: "ดาบ", action: itemActionHint(item), color: 0xd8d0b0, projectile: false, range: 4.8, cooldown: 650 },
+      shield: { name: "โล่", action: itemActionHint(item), color: 0x777766, projectile: false, range: 3.2, cooldown: 800 },
+      bow: { name: "ธนู", action: itemActionHint(item), color: 0x8b5a2b, projectile: true, range: 85, cooldown: 900 },
+      axe: { name: "ขวาน", action: itemActionHint(item), color: 0xe0a23c, projectile: false, range: 3.8, cooldown: 850 },
+      pickaxe: { name: "พลั่ว", action: itemActionHint(item), color: 0x9aa0a6, projectile: false, range: 3.8, cooldown: 850 },
+      commander_sword: { name: "ดาบ", action: itemActionHint(item), color: 0xc4452f, projectile: false, range: 4.5, cooldown: 750 },
+      wall_blueprint: { name: "แปลนกำแพง", action: itemActionHint(item), color: 0x8b6b3f, projectile: false, range: 8, cooldown: 500 },
+      rally_blueprint: { name: "ธงรวมพล", action: itemActionHint(item), color: 0xc4452f, projectile: false, range: 8, cooldown: 1000 }
     };
     return labels[item.id] || { name: item.displayName || "Item", action: item.primaryAction || "ใช้", color: 0xeeeeee, projectile: false };
   }
@@ -91,6 +124,8 @@
     G.player.equippedSlot = slot;
     updateHotbar();
     updateHeldModel();
+    updateAmmoDisplay();
+    if (typeof toast === "function" && local) toast("ถือ: " + itemThaiName(local));
   }
 
   function updateHotbar() {
@@ -102,25 +137,71 @@
     if (!loadout.length) { bar.style.display = "none"; label.style.display = "none"; return; }
     bar.style.display = "flex";
     label.style.display = "block";
-    label.textContent = "ถือ: " + (item.displayName || item.id);
+    label.textContent = "ถือ: " + itemThaiName(item);
     bar.innerHTML = "";
     for (var i = 1; i <= 5; i++) {
       var it = loadout.find(function (x) { return x.slot === i; });
       var b = document.createElement("div");
       b.dataset.slot = i;
       var selected = item && it && item.slot === it.slot;
-      b.style.cssText = "min-width:48px;height:42px;padding:3px 5px;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:" + (selected ? "rgba(224,162,60,.88)" : "rgba(15,18,28,.78)") + ";border:1px solid " + (selected ? "#ffd27a" : "rgba(255,255,255,.22)") + ";color:#eee;font-size:10px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35)";
-      b.innerHTML = "<b>" + i + "</b><span>" + (it ? (it.displayName || it.id).replace("Blueprint", "Plan") : "-") + "</span>";
-      if (it) b.addEventListener("click", (function (slot) { return function () { selectSlot(slot); }; })(i));
+      var short = itemShortLabel(it);
+      b.style.cssText = "width:42px;height:42px;padding:2px 3px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:" + (it ? "pointer" : "default") + ";background:" + (selected ? "linear-gradient(180deg,rgba(255,210,122,.96),rgba(210,122,32,.92))" : "rgba(15,18,28,.78)") + ";border:" + (selected ? "2px solid #fff2b0" : "1px solid rgba(255,255,255,.22)") + ";color:" + (selected ? "#201205" : "#eee") + ";font-size:10px;text-align:center;box-shadow:" + (selected ? "0 0 0 2px rgba(224,162,60,.28),0 0 14px rgba(255,210,122,.42)" : "0 2px 8px rgba(0,0,0,.35)") + ";touch-action:manipulation;user-select:none";
+      b.innerHTML = "<b style='font-size:10px;line-height:10px'>" + i + "</b><span style='font-size:14px;line-height:15px'>" + (it ? short.icon : "·") + "</span><span style='font-size:8px;line-height:9px;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + (it ? short.text : "-") + "</span>";
+      if (it) {
+        b.title = "ถือ: " + itemThaiName(it);
+        b.addEventListener("click", (function (slot) { return function () { selectSlot(slot); }; })(i));
+        b.addEventListener("touchstart", (function (slot) { return function (e) { e.preventDefault(); selectSlot(slot); }; })(i), { passive: false });
+      }
       bar.appendChild(b);
     }
   }
   window.updateHotbar = updateHotbar;
 
   function updateHeldModel() {
-    if (!G.gunGroup) return;
+    if (!G.gunGroup || typeof THREE === "undefined") return;
+    var item = currentEquippedItem();
     var w = currentClassWeapon();
-    G.gunGroup.children.forEach(function (ch) { if (ch.material && ch.material.color) ch.material.color.setHex(w.color); });
+    while (G.gunGroup.children.length) G.gunGroup.remove(G.gunGroup.children[0]);
+    function mat(color) { return new THREE.MeshLambertMaterial({ color: color }); }
+    function box(x, y, z, color, px, py, pz) {
+      var m = new THREE.Mesh(new THREE.BoxGeometry(x, y, z), mat(color));
+      m.position.set(px || 0, py || 0, pz || 0);
+      G.gunGroup.add(m);
+      return m;
+    }
+    function cyl(r, h, color, px, py, pz, rx) {
+      var m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 8), mat(color));
+      m.rotation.x = rx || 0;
+      m.position.set(px || 0, py || 0, pz || 0);
+      G.gunGroup.add(m);
+      return m;
+    }
+    if (item.id === "shield") {
+      box(0.48, 0.58, 0.08, 0x777766, 0.1, 0.0, -0.38);
+      box(0.12, 0.14, 0.12, 0x3a2a1a, 0.1, -0.24, -0.24);
+    } else if (item.id === "bow") {
+      var bow = cyl(0.035, 0.95, 0x8b5a2b, 0.05, 0, -0.38, 0);
+      bow.rotation.z = 0.28;
+      box(0.02, 0.82, 0.02, 0xd8d0b0, 0.18, 0, -0.38);
+    } else if (item.id === "axe") {
+      cyl(0.035, 0.72, 0x6b4423, 0, -0.05, -0.32, 0.15);
+      box(0.34, 0.18, 0.08, 0xb8b8aa, 0.12, 0.28, -0.55);
+    } else if (item.id === "pickaxe") {
+      cyl(0.035, 0.72, 0x6b4423, 0, -0.05, -0.32, 0.15);
+      box(0.48, 0.08, 0.08, 0x9aa0a6, 0.03, 0.3, -0.55);
+    } else if (item.id === "wall_blueprint") {
+      box(0.48, 0.34, 0.04, 0x8b6b3f, 0.05, 0.02, -0.38);
+      box(0.34, 0.04, 0.05, 0xd8d0b0, 0.05, 0.03, -0.34);
+    } else if (item.id === "rally_blueprint") {
+      cyl(0.025, 0.78, 0x6b4423, -0.06, -0.02, -0.36, 0);
+      box(0.34, 0.22, 0.04, 0xc4452f, 0.09, 0.22, -0.36);
+    } else {
+      box(0.1, 0.12, 0.88, w.color, 0, 0.02, -0.42);
+      box(0.04, 0.04, 0.26, 0xf0f0d0, 0, 0.02, -0.92);
+    }
+    box(0.1, 0.22, 0.12, 0x3a2a1a, 0, -0.22, -0.08);
+    if (G.muzzleFlash) G.gunGroup.add(G.muzzleFlash);
+    G.gunGroup.position.set(0.45, -0.35, -0.7);
   }
 
   // ===== INIT =====
@@ -382,6 +463,7 @@
       shield.position.set(-0.28, -0.02, -0.35);
       G.gunGroup.add(shield);
     }
+    updateHeldModel();
     // muzzle/arrow flash placeholder (hidden by default)
     var flashMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0 });
     G.muzzleFlash = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), flashMat);
@@ -413,27 +495,28 @@
       }
       shoot();
     });
-    document.addEventListener("mousedown", function (e) {
-      if (e.button === 2 && G.mouseLocked && currentEquippedItem().secondaryAction === "block") {
-        G.blocking = true;
-        netSend({ t: "block", active: true });
+    function useSecondaryAction(hold) {
+      var item = currentEquippedItem();
+      if (item.secondaryAction === "block") {
+        G.blocking = !!hold;
+        netSend({ t: "block", active: !!hold });
         updateAmmoDisplay();
+      } else if (item.secondaryAction === "aim") {
+        if (hold && !G.zooming) toggleZoom();
+        if (!hold && G.zooming) toggleZoom();
+      } else if (item.itemType === "blueprint" && hold) {
+        toast("รอง: หมุน/ยกเลิกแบบก่อสร้าง");
       }
+    }
+    document.addEventListener("mousedown", function (e) {
+      if (e.button === 2 && G.mouseLocked) useSecondaryAction(true);
     });
     document.addEventListener("contextmenu", function (e) {
       e.preventDefault();
-      if (G.mouseLocked && currentEquippedItem().secondaryAction === "block") {
-        G.blocking = true;
-        netSend({ t: "block", active: true });
-        updateAmmoDisplay();
-      }
+      if (G.mouseLocked) useSecondaryAction(true);
     });
     document.addEventListener("mouseup", function (e) {
-      if (e.button === 2 && G.blocking) {
-        G.blocking = false;
-        netSend({ t: "block", active: false });
-        updateAmmoDisplay();
-      }
+      if (e.button === 2) useSecondaryAction(false);
     });
     document.addEventListener("pointerlockchange", function () {
       G.mouseLocked = (document.pointerLockElement === G.renderer.domElement);
@@ -480,6 +563,19 @@
     animate();
   }
 
+  function applyMobileHotbarLayout() {
+    var hotbar = document.getElementById("hotbar");
+    var label = document.getElementById("equippedLabel");
+    var prompt = document.getElementById("interactPrompt");
+    var resource = document.getElementById("resourceHud");
+    var action = document.getElementById("actionDisplay");
+    if (hotbar) hotbar.style.bottom = "150px";
+    if (label) label.style.bottom = "210px";
+    if (prompt) prompt.style.bottom = "248px";
+    if (resource) resource.style.bottom = "330px";
+    if (action) action.style.bottom = "330px";
+  }
+
   // ===== TOUCH CONTROLS (mobile) =====
   function initTouchControls() {
     G.touch = {
@@ -492,6 +588,7 @@
     };
     var isMobile = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
     if (!isMobile) return;
+    applyMobileHotbarLayout();
 
     var W = window.innerWidth;
     var H = window.innerHeight;
@@ -513,7 +610,8 @@
     nub.style.cssText = "position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.4)";
     joy.appendChild(nub);
     document.body.appendChild(joy);
-    registerLayoutBtn(joy, "joystick");
+    // Fixed Phase 9.7 mobile layout: do not apply old saved layout positions.
+
 
     // --- Q2: shoot button (left-top) ---
     var shootBtn = document.createElement("div");
@@ -521,7 +619,8 @@
     shootBtn.style.cssText = "position:fixed;left:20px;top:70px;width:80px;height:80px;border-radius:50%;background:rgba(196,69,47,0.65);border:2px solid rgba(255,255,255,0.35);z-index:20;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-family:monospace;touch-action:none";
     shootBtn.textContent = "โจมตี";
     document.body.appendChild(shootBtn);
-    registerLayoutBtn(shootBtn, "shoot");
+    // Fixed Phase 9.7 mobile layout: primary button stays clear of hotbar.
+
 
     var shootHint = document.createElement("div");
     shootHint.style.cssText = "position:fixed;left:20px;top:155px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace;text-align:center;width:80px";
@@ -531,13 +630,13 @@
     // --- Secondary item button (right-top) ---
     var secondaryBtn = document.createElement("div");
     secondaryBtn.id = "touchSecondary";
-    secondaryBtn.style.cssText = "position:fixed;right:24px;top:82px;width:72px;height:72px;border-radius:50%;background:rgba(74,125,168,0.55);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-family:monospace;touch-action:none";
+    secondaryBtn.style.cssText = "position:fixed;right:24px;top:210px;width:72px;height:72px;border-radius:50%;background:rgba(74,125,168,0.55);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-family:monospace;touch-action:none";
     secondaryBtn.textContent = "รอง";
     document.body.appendChild(secondaryBtn);
 
     var secondaryHint = document.createElement("div");
     secondaryHint.id = "secondaryHint";
-    secondaryHint.style.cssText = "position:fixed;right:16px;top:158px;font-size:9px;color:rgba(255,255,255,0.55);z-index:20;font-family:monospace;text-align:center;width:88px";
+    secondaryHint.style.cssText = "position:fixed;right:16px;top:286px;font-size:9px;color:rgba(255,255,255,0.55);z-index:20;font-family:monospace;text-align:center;width:88px";
     secondaryHint.textContent = "โล่/เล็ง/หมุน";
     document.body.appendChild(secondaryHint);
 
@@ -550,15 +649,13 @@
     // --- Sprint button (right-bottom, above look zone) ---
     var sprintBtn = document.createElement("div");
     sprintBtn.id = "touchSprint";
-    sprintBtn.style.cssText = "position:fixed;right:160px;bottom:20px;width:56px;height:56px;border-radius:50%;background:rgba(74,125,168,0.5);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-family:monospace;touch-action:none";
+    sprintBtn.style.cssText = "position:fixed;right:24px;top:318px;width:62px;height:48px;border-radius:14px;background:rgba(74,125,168,0.55);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
     sprintBtn.textContent = "วิ่ง";
     document.body.appendChild(sprintBtn);
-    registerLayoutBtn(sprintBtn, "sprint");
+    // Fixed Phase 9.7 mobile layout: sprint sits above hotbar, not in bottom lane.
 
-    var lookHint = document.createElement("div");
-    lookHint.style.cssText = "position:fixed;right:20px;bottom:85px;font-size:9px;color:rgba(255,255,255,0.4);z-index:20;font-family:monospace;text-align:right";
-    lookHint.textContent = "ลาก=มอง | แตะ=กระโดด";
-    document.body.appendChild(lookHint);
+
+    // Look zone is invisible; bottom lane is reserved for hotbar readability.
 
     // ===== JOYSTICK (Q1) =====
     joy.addEventListener("touchstart", function (e) {
@@ -1727,7 +1824,7 @@
         var item = currentEquippedItem();
         var okTool = (nearNode.type === "wood" && item.id === "axe") || (nearNode.type === "stone" && item.id === "pickaxe");
         if (okTool) {
-          prompt.textContent = nearNode.type === "wood" ? "กด E เก็บไม้" : "กด E เก็บหิน";
+          prompt.textContent = nearNode.type === "wood" ? "E: เก็บไม้" : "E: เก็บหิน";
           prompt.textContent += " (" + nearNode.amount + ")";
           prompt.style.color = "#e0a23c";
         } else {
@@ -1759,7 +1856,7 @@
       var item = currentEquippedItem();
       if (item && item.itemType === "blueprint") {
         prompt.style.display = "block";
-        prompt.textContent = "คลิกเพื่อวาง " + (item.buildType === "wooden_wall" ? "กำแพงไม้" : "ธงรวมพล") + " | คลิกขวา=หมุน/ยกเลิก";
+        prompt.textContent = item.buildType === "wooden_wall" ? "คลิก: วางกำแพง" : "คลิก: วางธงรวมพล";
         prompt.style.color = "#e0a23c";
         return;
       }
