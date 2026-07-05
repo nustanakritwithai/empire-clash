@@ -49,10 +49,13 @@ Polish only the usability of the Phase 9.6 equipment/hotbar flow. Server authori
 
 ## Final mobile controls
 
-- Left-bottom joystick: movement.
-- Left-top `โจมตี`: primary action of equipped item.
-- Right-top `รอง`: secondary action of equipped item.
-- Right-side `วิ่ง`: sprint toggle.
+- Lower-left dynamic joystick: start dragging anywhere in the movement zone.
+- Push the joystick strongly forward/up: sprint automatically; no separate sprint button.
+- Lower-right `ยิง`: primary action of equipped item.
+- Lower-right `เล็ง`: secondary action of equipped item.
+- Lower-right `โดด`: explicit jump.
+- Lower-right `ใช้`: contextual gather/deposit interaction.
+- Upper-right `ย่อ/หมอบ/ยืน`: crouch/prone cycle.
 - Bottom-center hotbar: tap slot to select item.
 
 ## Prompt rules

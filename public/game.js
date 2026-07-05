@@ -580,9 +580,10 @@
   function initTouchControls() {
     G.touch = {
       joyActive: false, joyX: 0, joyY: 0, joyId: null,
+      joyOriginX: 0, joyOriginY: 0,
       lookId: null, lookX: 0, lookY: 0,
       shooting: false, reloading: false,
-      crouching: false,
+      crouching: false, prone: false,
       jumpTriggered: false,
       sprinting: false
     };
@@ -592,82 +593,97 @@
 
     var W = window.innerWidth;
     var H = window.innerHeight;
-    var halfW = W / 2;
-    var halfH = H / 2;
+    var moveW = Math.min(W * 0.56, 250);
+    var moveH = Math.min(H * 0.46, 330);
 
-    // === MOBILE ZONES ===
-    // left-bottom: joystick movement
-    // left-top: primary use of equipped item
-    // right-top: secondary use of equipped item
-    // right-bottom: look drag / tap jump / sprint
+    // === PHASE 9.8 MOBILE LAYOUT ===
+    // lower-left: large dynamic movement zone, floating joystick origin
+    // bottom-center: hotbar
+    // lower-right: Fire / Aim / Jump / Action cluster
+    // upper-right: crouch, below minimap/capture-safe lane
 
-    // --- Q1: joystick (left-bottom) ---
+    var moveZone = document.createElement("div");
+    moveZone.id = "moveZone";
+    moveZone.style.cssText = "position:fixed;left:0;bottom:0;width:" + moveW + "px;height:" + moveH + "px;z-index:6;touch-action:none;background:rgba(255,255,255,0.015);border-top-right-radius:28px";
+    document.body.appendChild(moveZone);
+
     var joy = document.createElement("div");
     joy.id = "touchJoy";
-    joy.style.cssText = "position:fixed;left:20px;bottom:20px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.25);z-index:20;touch-action:none";
+    joy.style.cssText = "position:fixed;left:28px;bottom:26px;width:116px;height:116px;border-radius:50%;background:rgba(255,255,255,0.07);border:2px solid rgba(255,255,255,0.22);z-index:20;touch-action:none;pointer-events:none;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(0,0,0,.32)";
     var nub = document.createElement("div");
     nub.id = "touchNub";
-    nub.style.cssText = "position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.4)";
+    nub.style.cssText = "position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(255,255,255,0.28);border:1px solid rgba(255,255,255,0.46)";
     joy.appendChild(nub);
     document.body.appendChild(joy);
-    // Fixed Phase 9.7 mobile layout: do not apply old saved layout positions.
 
+    function makeBtn(id, text, css) {
+      var b = document.createElement("div");
+      b.id = id;
+      b.textContent = text;
+      b.style.cssText = css + ";position:fixed;z-index:24;display:flex;align-items:center;justify-content:center;color:#fff;font-family:monospace;touch-action:none;user-select:none;text-align:center;box-shadow:0 3px 12px rgba(0,0,0,.35)";
+      document.body.appendChild(b);
+      return b;
+    }
 
-    // --- Q2: shoot button (left-top) ---
-    var shootBtn = document.createElement("div");
-    shootBtn.id = "touchShoot";
-    shootBtn.style.cssText = "position:fixed;left:20px;top:70px;width:80px;height:80px;border-radius:50%;background:rgba(196,69,47,0.65);border:2px solid rgba(255,255,255,0.35);z-index:20;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-family:monospace;touch-action:none";
-    shootBtn.textContent = "โจมตี";
-    document.body.appendChild(shootBtn);
-    // Fixed Phase 9.7 mobile layout: primary button stays clear of hotbar.
+    var fireBtn = makeBtn("touchFire", "ยิง", "right:14px;bottom:86px;width:58px;height:58px;border-radius:50%;background:rgba(196,69,47,0.74);border:2px solid rgba(255,255,255,0.38);font-size:14px");
+    var aimBtn = makeBtn("touchAim", "เล็ง", "right:82px;bottom:86px;width:58px;height:58px;border-radius:50%;background:rgba(74,125,168,0.62);border:2px solid rgba(255,255,255,0.30);font-size:13px");
+    var jumpBtn = makeBtn("touchJump", "โดด", "right:14px;bottom:18px;width:58px;height:58px;border-radius:50%;background:rgba(74,157,74,0.66);border:2px solid rgba(255,255,255,0.32);font-size:13px");
+    var actionBtn = makeBtn("touchAction", "ใช้", "right:82px;bottom:18px;width:58px;height:58px;border-radius:50%;background:rgba(224,162,60,0.38);border:2px solid rgba(255,210,122,0.25);font-size:13px;opacity:.55");
+    var crouchBtn = makeBtn("touchCrouch", "ย่อ", "right:14px;top:136px;width:66px;height:44px;border-radius:14px;background:rgba(74,125,168,0.58);border:2px solid rgba(255,255,255,0.28);font-size:12px");
 
+    G.mobileActionBtn = actionBtn;
 
-    var shootHint = document.createElement("div");
-    shootHint.style.cssText = "position:fixed;left:20px;top:155px;font-size:9px;color:rgba(255,255,255,0.5);z-index:20;font-family:monospace;text-align:center;width:80px";
-    shootHint.textContent = "กด=โจมตี / ธนูยิง";
-    document.body.appendChild(shootHint);
+    function setBtnActive(btn, active, normal, activeColor) {
+      btn.style.background = active ? activeColor : normal;
+    }
 
-    // --- Secondary item button (right-top) ---
-    var secondaryBtn = document.createElement("div");
-    secondaryBtn.id = "touchSecondary";
-    secondaryBtn.style.cssText = "position:fixed;right:24px;top:210px;width:72px;height:72px;border-radius:50%;background:rgba(74,125,168,0.55);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-family:monospace;touch-action:none";
-    secondaryBtn.textContent = "รอง";
-    document.body.appendChild(secondaryBtn);
+    function resetJoystick() {
+      G.touch.joyActive = false;
+      G.touch.joyId = null;
+      G.touch.joyX = 0;
+      G.touch.joyY = 0;
+      G.touch.sprinting = false;
+      nub.style.left = "50%";
+      nub.style.top = "50%";
+      joy.style.borderColor = "rgba(255,255,255,0.22)";
+      joy.style.left = "28px";
+      joy.style.top = "auto";
+      joy.style.bottom = "26px";
+    }
 
-    var secondaryHint = document.createElement("div");
-    secondaryHint.id = "secondaryHint";
-    secondaryHint.style.cssText = "position:fixed;right:16px;top:286px;font-size:9px;color:rgba(255,255,255,0.55);z-index:20;font-family:monospace;text-align:center;width:88px";
-    secondaryHint.textContent = "โล่/เล็ง/หมุน";
-    document.body.appendChild(secondaryHint);
-
-    // --- Q4: look zone (right-bottom) ---
-    var lookZone = document.createElement("div");
-    lookZone.id = "lookZone";
-    lookZone.style.cssText = "position:fixed;right:0;bottom:0;width:" + halfW + "px;height:" + halfH + "px;z-index:5;touch-action:none";
-    document.body.appendChild(lookZone);
-
-    // --- Sprint button (right-bottom, above look zone) ---
-    var sprintBtn = document.createElement("div");
-    sprintBtn.id = "touchSprint";
-    sprintBtn.style.cssText = "position:fixed;right:24px;top:318px;width:62px;height:48px;border-radius:14px;background:rgba(74,125,168,0.55);border:2px solid rgba(255,255,255,0.3);z-index:20;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-family:monospace;touch-action:none";
-    sprintBtn.textContent = "วิ่ง";
-    document.body.appendChild(sprintBtn);
-    // Fixed Phase 9.7 mobile layout: sprint sits above hotbar, not in bottom lane.
-
-
-    // Look zone is invisible; bottom lane is reserved for hotbar readability.
-
-    // ===== JOYSTICK (Q1) =====
-    joy.addEventListener("touchstart", function (e) {
-      if (layoutMode) return;
-      e.preventDefault();
-      var t = e.changedTouches[0];
+    function beginJoystick(t) {
       G.touch.joyActive = true;
       G.touch.joyId = t.identifier;
+      G.touch.joyOriginX = t.clientX;
+      G.touch.joyOriginY = t.clientY;
+      joy.style.left = (t.clientX - 58) + "px";
+      joy.style.top = (t.clientY - 58) + "px";
+      joy.style.bottom = "auto";
       updateJoystick(t.clientX, t.clientY);
+    }
+
+    function updateJoystick(tx, ty) {
+      var maxR = 58;
+      var dx = tx - G.touch.joyOriginX;
+      var dy = ty - G.touch.joyOriginY;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      if (d > maxR) { dx = (dx / d) * maxR; dy = (dy / d) * maxR; }
+      G.touch.joyX = dx / maxR;
+      G.touch.joyY = dy / maxR;
+      G.touch.sprinting = G.touch.joyY < -0.78;
+      nub.style.left = (50 + (dx / maxR) * 40) + "%";
+      nub.style.top = (50 + (dy / maxR) * 40) + "%";
+      joy.style.borderColor = G.touch.sprinting ? "rgba(74,255,120,0.85)" : "rgba(255,255,255,0.22)";
+    }
+
+    moveZone.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
+      e.preventDefault();
+      if (G.touch.joyActive) return;
+      beginJoystick(e.changedTouches[0]);
     }, { passive: false });
 
-    joy.addEventListener("touchmove", function (e) {
+    moveZone.addEventListener("touchmove", function (e) {
       e.preventDefault();
       for (var i = 0; i < e.changedTouches.length; i++) {
         var t = e.changedTouches[i];
@@ -675,113 +691,93 @@
       }
     }, { passive: false });
 
-    joy.addEventListener("touchend", function (e) {
+    moveZone.addEventListener("touchend", function (e) {
       e.preventDefault();
       for (var i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === G.touch.joyId) {
-          G.touch.joyActive = false;
-          G.touch.joyId = null;
-          G.touch.joyX = 0;
-          G.touch.joyY = 0;
-          nub.style.left = "50%";
-          nub.style.top = "50%";
-        }
+        if (e.changedTouches[i].identifier === G.touch.joyId) resetJoystick();
       }
     }, { passive: false });
+    moveZone.addEventListener("touchcancel", function (e) { resetJoystick(); }, { passive: false });
 
-    function updateJoystick(tx, ty) {
-      var rect = joy.getBoundingClientRect();
-      var cx = rect.left + rect.width / 2;
-      var cy = rect.top + rect.height / 2;
-      var dx = tx - cx, dy = ty - cy;
-      var d = Math.sqrt(dx * dx + dy * dy);
-      var maxR = rect.width / 2;
-      if (d > maxR) { dx = (dx / d) * maxR; dy = (dy / d) * maxR; }
-      G.touch.joyX = dx / maxR;
-      G.touch.joyY = dy / maxR;
-      nub.style.left = (50 + (dx / maxR) * 40) + "%";
-      nub.style.top = (50 + (dy / maxR) * 40) + "%";
-    }
-
-    // ===== SHOOT (Q2 — hold = auto-fire) =====
-    shootBtn.addEventListener("touchstart", function (e) {
-      if (layoutMode) return;
-      e.preventDefault();
+    function useMobilePrimary() {
       G.touch.shooting = true;
       shoot();
-      shootBtn.style.background = "rgba(196,69,47,0.9)";
-    }, { passive: false });
-
-    shootBtn.addEventListener("touchend", function (e) {
-      if (layoutMode) return;
-      e.preventDefault();
-      G.touch.shooting = false;
-      shootBtn.style.background = "rgba(196,69,47,0.65)";
-    }, { passive: false });
-
-    // auto-fire removed with legacy gun buttons; hotbar primary action handles equipped item.
-
-    // ===== SPRINT (right-bottom) =====
-    var sprinting = false;
-    sprintBtn.addEventListener("touchstart", function (e) {
-      if (layoutMode) return;
-      e.preventDefault();
-      sprinting = !sprinting;
-      sprintBtn.style.background = sprinting ? "rgba(74,157,74,0.8)" : "rgba(74,125,168,0.5)";
-      G.touch.sprinting = sprinting;
-    }, { passive: false });
-
-    // ===== SECONDARY ITEM ACTION (right-top) =====
-    function updateSecondaryButton(active) {
-      var item = currentEquippedItem();
-      secondaryBtn.textContent = item.secondaryAction === "block" ? "โล่" : (item.secondaryAction === "aim" ? "เล็ง" : (item.itemType === "blueprint" ? "หมุน" : "รอง"));
-      secondaryBtn.style.background = active ? "rgba(74,157,74,0.85)" : "rgba(74,125,168,0.55)";
+      setBtnActive(fireBtn, true, "rgba(196,69,47,0.74)", "rgba(196,69,47,0.95)");
+      setTimeout(function () { setBtnActive(fireBtn, false, "rgba(196,69,47,0.74)", "rgba(196,69,47,0.95)"); }, 110);
     }
-    secondaryBtn.addEventListener("touchstart", function (e) {
-      if (layoutMode) return;
-      e.preventDefault();
+
+    function mobileSecondary(hold) {
       var item = currentEquippedItem();
       if (item.secondaryAction === "block") {
-        G.blocking = true;
-        netSend({ t: "block", active: true });
-        updateSecondaryButton(true);
+        G.blocking = !!hold;
+        netSend({ t: "block", active: !!hold });
+        setBtnActive(aimBtn, !!hold, "rgba(74,125,168,0.62)", "rgba(74,157,74,0.86)");
+        updateAmmoDisplay();
       } else if (item.secondaryAction === "aim") {
-        toggleZoom();
-        updateSecondaryButton(G.zooming);
-      } else if (item.itemType === "blueprint") {
-        toast("หมุน/ยกเลิกแบบก่อสร้าง (placeholder)");
-        updateSecondaryButton(false);
-      } else {
-        toast("ไอเทมนี้ไม่มีใช้รอง");
+        if (hold && !G.zooming) toggleZoom();
+        if (!hold && G.zooming) toggleZoom();
+        setBtnActive(aimBtn, !!hold, "rgba(74,125,168,0.62)", "rgba(74,157,74,0.86)");
+      } else if (item.itemType === "blueprint" && hold) {
+        toast("รอง: หมุน/ยกเลิกแบบก่อสร้าง");
+      } else if (hold) {
+        toast("ไม่มีใช้รอง");
       }
-    }, { passive: false });
-    secondaryBtn.addEventListener("touchend", function (e) {
+    }
+
+    fireBtn.addEventListener("touchstart", function (e) { if (layoutMode) return; e.preventDefault(); useMobilePrimary(); }, { passive: false });
+    fireBtn.addEventListener("touchend", function (e) { e.preventDefault(); G.touch.shooting = false; }, { passive: false });
+
+    aimBtn.addEventListener("touchstart", function (e) { if (layoutMode) return; e.preventDefault(); mobileSecondary(true); }, { passive: false });
+    aimBtn.addEventListener("touchend", function (e) { if (layoutMode) return; e.preventDefault(); mobileSecondary(false); }, { passive: false });
+    aimBtn.addEventListener("touchcancel", function (e) { mobileSecondary(false); }, { passive: false });
+
+    jumpBtn.addEventListener("touchstart", function (e) {
       if (layoutMode) return;
       e.preventDefault();
-      if (G.blocking) {
-        G.blocking = false;
-        netSend({ t: "block", active: false });
-      }
-      updateSecondaryButton(false);
+      G.touch.jumpTriggered = true;
+      setBtnActive(jumpBtn, true, "rgba(74,157,74,0.66)", "rgba(74,200,100,0.92)");
+      setTimeout(function () { setBtnActive(jumpBtn, false, "rgba(74,157,74,0.66)", "rgba(74,200,100,0.92)"); }, 120);
     }, { passive: false });
-    setInterval(function () { updateSecondaryButton(G.blocking || G.zooming); }, 500);
 
-    // ===== LOOK / JUMP (Q4) =====
+    actionBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
+      e.preventDefault();
+      if (actionBtn.dataset.enabled === "1") {
+        tryInteract();
+        setBtnActive(actionBtn, true, "rgba(224,162,60,0.70)", "rgba(224,162,60,0.95)");
+        setTimeout(function () { updateMobileActionButton(); }, 120);
+      } else {
+        toast("ยังไม่มีอะไรให้ใช้");
+      }
+    }, { passive: false });
+
+    var crouchState = 0; // 0 stand, 1 crouch, 2 prone
+    function updateCrouchButton() {
+      crouchBtn.textContent = crouchState === 0 ? "ย่อ" : (crouchState === 1 ? "หมอบ" : "ยืน");
+      crouchBtn.style.background = crouchState === 0 ? "rgba(74,125,168,0.58)" : (crouchState === 1 ? "rgba(224,162,60,0.72)" : "rgba(120,74,168,0.78)");
+    }
+    crouchBtn.addEventListener("touchstart", function (e) {
+      if (layoutMode) return;
+      e.preventDefault();
+      crouchState = (crouchState + 1) % 3;
+      G.touch.crouching = crouchState === 1;
+      G.touch.prone = crouchState === 2;
+      updateCrouchButton();
+    }, { passive: false });
+    updateCrouchButton();
+
+    // Invisible look zone: drag anywhere on the right half except buttons to look.
+    var lookZone = document.createElement("div");
+    lookZone.id = "lookZone";
+    lookZone.style.cssText = "position:fixed;right:0;bottom:0;width:" + (W / 2) + "px;height:" + H + "px;z-index:5;touch-action:none";
+    document.body.appendChild(lookZone);
     lookZone.addEventListener("touchstart", function (e) {
       e.preventDefault();
       for (var i = 0; i < e.changedTouches.length; i++) {
         var t = e.changedTouches[i];
-        if (G.touch.lookId === null) {
-          G.touch.lookId = t.identifier;
-          G.touch.lookX = t.clientX;
-          G.touch.lookY = t.clientY;
-          G.touch.lookStartX = t.clientX;
-          G.touch.lookStartY = t.clientY;
-          G.touch.lookMoved = false;
-        }
+        if (G.touch.lookId === null) { G.touch.lookId = t.identifier; G.touch.lookX = t.clientX; G.touch.lookY = t.clientY; }
       }
     }, { passive: false });
-
     lookZone.addEventListener("touchmove", function (e) {
       e.preventDefault();
       for (var i = 0; i < e.changedTouches.length; i++) {
@@ -795,33 +791,25 @@
           G.pitch = Math.max(-1.5, Math.min(1.5, G.pitch));
           G.touch.lookX = t.clientX;
           G.touch.lookY = t.clientY;
-          // track if moved enough (to distinguish tap=jump from drag=look)
-          var totalMove = Math.abs(t.clientX - G.touch.lookStartX) + Math.abs(t.clientY - G.touch.lookStartY);
-          if (totalMove > 15) G.touch.lookMoved = true;
         }
       }
     }, { passive: false });
-
     lookZone.addEventListener("touchend", function (e) {
       e.preventDefault();
-      for (var i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === G.touch.lookId) {
-          // tap (no significant move) = jump
-          if (!G.touch.lookMoved) {
-            G.touch.jumpTriggered = true;
-          }
-          G.touch.lookId = null;
-        }
-      }
+      for (var i = 0; i < e.changedTouches.length; i++) if (e.changedTouches[i].identifier === G.touch.lookId) G.touch.lookId = null;
     }, { passive: false });
 
-    // crosshair shows on both mobile + desktop (dynamic)
+    setInterval(function () {
+      if (!G.mobileActionBtn) return;
+      updateMobileActionButton();
+      var item = currentEquippedItem();
+      aimBtn.textContent = item.secondaryAction === "block" ? "โล่" : (item.secondaryAction === "aim" ? "เล็ง" : "รอง");
+    }, 300);
+
     var ch = document.getElementById("crosshair");
     if (ch) ch.style.display = "block";
-
-    // update controls hint
     var ctrl = document.getElementById("controls");
-    if (ctrl) ctrl.textContent = "ซ้ายล่าง:เดิน | ซ้ายบน:ใช้ของ | ขวาบน:ใช้รอง | ขวาล่าง:มอง/กระโดด/วิ่ง | แตะ hotbar เพื่อเปลี่ยนของ";
+    if (ctrl) ctrl.textContent = "ซ้ายล่าง: จอยลอย | ดันขึ้นแรง=วิ่ง | ขวาล่าง: ยิง/เล็ง/โดด/ใช้ | ขวาบน: ย่อ/หมอบ | Hotbar: เปลี่ยนของ";
   }
 
   // ===== LAYOUT EDIT MODE =====
@@ -1658,6 +1646,7 @@
     updateCaptureFlags();
     updateScoreHud();
     updateInteractionPrompt();
+    updateMobileActionButton();
     updateResourceHud();
     updateAmmoDisplay();
     updateBuildings();
@@ -1772,6 +1761,47 @@
   var GATHER_RADIUS = 5;
   var DEPOSIT_RADIUS = 12;
 
+  function getInteractionInfo() {
+    if (G.dead || typeof NET === "undefined") return { valid: false, label: "ใช้", reason: "" };
+    var nearNode = null, nearDist = Infinity;
+    if (NET.resourceNodes) {
+      for (var i = 0; i < NET.resourceNodes.length; i++) {
+        var node = NET.resourceNodes[i];
+        var dx = node.x - G.player.x, dz = node.z - G.player.z;
+        var d = Math.sqrt(dx * dx + dz * dz);
+        if (d < GATHER_RADIUS && d < nearDist) { nearNode = node; nearDist = d; }
+      }
+    }
+    if (nearNode) {
+      if (G.playerClass !== "worker") return { valid: false, label: "ใช้", reason: "ต้องเป็นคนงานเท่านั้น" };
+      var item = currentEquippedItem();
+      if (nearNode.type === "wood" && item.id !== "axe") return { valid: false, label: "ขวาน", reason: "ต้องถือขวาน" };
+      if (nearNode.type === "stone" && item.id !== "pickaxe") return { valid: false, label: "พลั่ว", reason: "ต้องถือพลั่วขุดหิน" };
+      return { valid: true, label: nearNode.type === "wood" ? "เก็บไม้" : "เก็บหิน", node: nearNode };
+    }
+    var wh = NET.warehouses ? NET.warehouses[G.playerFaction] : null;
+    if (wh) {
+      var wdx = wh.x - G.player.x, wdz = wh.z - G.player.z;
+      var wd = Math.sqrt(wdx * wdx + wdz * wdz);
+      var inv = G.player.inventory || { wood: 0, stone: 0 };
+      if (wd < (wh.radius || DEPOSIT_RADIUS) && ((inv.wood || 0) > 0 || (inv.stone || 0) > 0)) {
+        return { valid: true, label: "ฝาก", deposit: true };
+      }
+    }
+    return { valid: false, label: "ใช้", reason: "" };
+  }
+
+  function updateMobileActionButton() {
+    var btn = G.mobileActionBtn || document.getElementById("touchAction");
+    if (!btn) return;
+    var info = getInteractionInfo();
+    btn.textContent = info.label || "ใช้";
+    btn.dataset.enabled = info.valid ? "1" : "0";
+    btn.style.opacity = info.valid ? "1" : ".55";
+    btn.style.background = info.valid ? "rgba(224,162,60,0.70)" : "rgba(224,162,60,0.38)";
+    btn.style.borderColor = info.valid ? "rgba(255,210,122,0.58)" : "rgba(255,210,122,0.25)";
+  }
+
   function tryInteract() {
     if (G.dead) return;
     // check near resource node
@@ -1824,7 +1854,7 @@
         var item = currentEquippedItem();
         var okTool = (nearNode.type === "wood" && item.id === "axe") || (nearNode.type === "stone" && item.id === "pickaxe");
         if (okTool) {
-          prompt.textContent = nearNode.type === "wood" ? "E: เก็บไม้" : "E: เก็บหิน";
+          prompt.textContent = nearNode.type === "wood" ? "E/ใช้: เก็บไม้" : "E/ใช้: เก็บหิน";
           prompt.textContent += " (" + nearNode.amount + ")";
           prompt.style.color = "#e0a23c";
         } else {
@@ -1846,7 +1876,7 @@
         var inv = G.player.inventory || { wood: 0, stone: 0 };
         if (inv.wood > 0 || inv.stone > 0) {
           prompt.style.display = "block";
-          prompt.textContent = "กด E ฝากทรัพยากร (ไม้ " + (inv.wood || 0) + " หิน " + (inv.stone || 0) + ")";
+          prompt.textContent = "E/ใช้: ฝากทรัพยากร (ไม้ " + (inv.wood || 0) + " หิน " + (inv.stone || 0) + ")";
           prompt.style.color = "#e0a23c";
           return;
         }
