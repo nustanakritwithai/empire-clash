@@ -25,6 +25,7 @@ ok('build sends clamped/near placement marker', gameJs.includes('clampBuildPlace
 ok('build preview has approximate red/green validity', gameJs.includes('buildPlacementApproxValid') && gameJs.includes('0xff4444') && gameJs.includes('0x55ff66'));
 
 ok('sword empty swing sends miss instead of target error marker', gameJs.includes('payload.swing = true'));
+ok('worker tool primary near resource uses gather interaction before target search', gameJs.includes('Worker tools near resource nodes should gather on Fire/click too') && gameJs.includes('toolInteraction.node') && gameJs.includes('tryInteract();'));
 
 const room = new GameRoom();
 clearInterval(room.timer);

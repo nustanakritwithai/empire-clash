@@ -1094,6 +1094,15 @@
       tryBuild(item.buildType);
       return;
     }
+    // Worker tools near resource nodes should gather on Fire/click too.
+    // This prevents pickaxe/axe mining from falling into classAttack target search.
+    if (G.playerClass === "worker" && (item.id === "axe" || item.id === "pickaxe")) {
+      var toolInteraction = getInteractionInfo();
+      if (toolInteraction.node || toolInteraction.reason) {
+        tryInteract();
+        return;
+      }
+    }
     w.range = w.range || (item.id === "bow" ? 85 : 4.5);
     w.cooldown = w.cooldown || (item.id === "bow" ? 900 : 750);
     if (Date.now() - G.lastShoot < w.cooldown) return;
