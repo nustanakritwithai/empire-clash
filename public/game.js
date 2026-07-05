@@ -324,43 +324,11 @@
 
     G.captureFlags["central_fort"] = { pole: cpPole, flag: cpFlag, ring: cpRing };
 
-    // ===== RESOURCE NODES: trees (North Forest) + rocks (South Quarry) =====
-    G.resourceMeshes = {}; // id -> mesh
-    // trees
-    for (var ti = 0; ti < 5; ti++) {
-      var tx = [-20, 0, 20, -10, 10][ti];
-      var tz = [-60, -65, -60, -50, -50][ti];
-      // trunk
-      var trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.3, 0.4, 3, 6),
-        new THREE.MeshLambertMaterial({ color: 0x6b4423 })
-      );
-      trunk.position.set(tx, 1.5, tz);
-      trunk.castShadow = true;
-      G.scene.add(trunk);
-      // foliage (cone)
-      var foliage = new THREE.Mesh(
-        new THREE.ConeGeometry(2, 4, 6),
-        new THREE.MeshLambertMaterial({ color: 0x2d6b2d })
-      );
-      foliage.position.set(tx, 4.5, tz);
-      foliage.castShadow = true;
-      G.scene.add(foliage);
-      G.resourceMeshes["tree_" + (ti + 1)] = { trunk: trunk, foliage: foliage };
-    }
-    // rocks
-    for (var ri = 0; ri < 5; ri++) {
-      var rx = [-20, 0, 20, -10, 10][ri];
-      var rz = [60, 65, 60, 50, 50][ri];
-      var rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(1.5, 0),
-        new THREE.MeshLambertMaterial({ color: 0x888888 })
-      );
-      rock.position.set(rx, 1, rz);
-      rock.castShadow = true;
-      G.scene.add(rock);
-      G.resourceMeshes["rock_" + (ri + 1)] = { mesh: rock };
-    }
+    // ===== RESOURCE NODES: rendered from server snapshot (Phase 9.9A) =====
+    G.resourceMeshes = {}; // id -> { trunk, foliage, mesh, resourceNodeId, resourceType, gatherToolRequired }
+    // Initial decorative placeholders will be replaced when first snapshot arrives.
+    // The real rendering happens in updateResourceMeshes() called every frame.
+    G.resourceMeshesInited = false;
 
     // ===== WAREHOUSES (faction-colored buildings at each base) =====
     G.warehouseMeshes = {};
@@ -1693,6 +1661,7 @@
     drawMinimap();
     updateCaptureFlags();
     updateScoreHud();
+    updateResourceMeshes();
     updateInteractionPrompt();
     updateMobileActionButton();
     updateResourceHud();
@@ -1806,7 +1775,7 @@
   }
 
   // ===== RESOURCE INTERACTION (Phase 7) =====
-  var GATHER_RADIUS = 5;
+  var GATHER_RADIUS = 6.5; // Phase 9.9A: widened to match visible tree/rock object size
   var DEPOSIT_RADIUS = 12;
 
   function getInteractionInfo() {
@@ -1867,6 +1836,67 @@
       toast("ฝากทรัพยากร");
       return;
     }
+  }
+
+  // Phase 9.9A: Render resource meshes from server snapshot data.
+  // Each visible tree/rock corresponds to a server-authoritative resource node.
+  function updateResourceMeshes() {
+    if (typeof NET === "undefined" || !NET.resourceNodes || NET.resourceNodes.length === 0) return;
+    if (G.resourceMeshesInited) {
+      // Update amounts on existing meshes (visual feedback when depleted)
+      for (var i = 0; i < NET.resourceNodes.length; i++) {
+        var node = NET.resourceNodes[i];
+        var entry = G.resourceMeshes[node.id];
+        if (!entry) continue;
+        // Dim foliage/rock when amount is low
+        var pct = node.amount / node.maxAmount;
+        if (entry.foliage) entry.foliage.material.opacity = 0.3 + pct * 0.7;
+        if (entry.mesh) entry.mesh.material.opacity = 0.3 + pct * 0.7;
+      }
+      return;
+    }
+    // First snapshot: create meshes from server data
+    for (var j = 0; j < NET.resourceNodes.length; j++) {
+      var sn = NET.resourceNodes[j];
+      var isTree = sn.type === "wood";
+      var tool = isTree ? "axe" : "pickaxe";
+      if (isTree) {
+        var trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.3, 0.4, 3, 6),
+          new THREE.MeshLambertMaterial({ color: 0x6b4423, transparent: true })
+        );
+        trunk.position.set(sn.x, 1.5, sn.z);
+        trunk.castShadow = true;
+        trunk.resourceNodeId = sn.id;
+        trunk.resourceType = sn.type;
+        trunk.gatherToolRequired = tool;
+        G.scene.add(trunk);
+        var foliage = new THREE.Mesh(
+          new THREE.ConeGeometry(2, 4, 6),
+          new THREE.MeshLambertMaterial({ color: 0x2d6b2d, transparent: true })
+        );
+        foliage.position.set(sn.x, 4.5, sn.z);
+        foliage.castShadow = true;
+        foliage.resourceNodeId = sn.id;
+        foliage.resourceType = sn.type;
+        foliage.gatherToolRequired = tool;
+        G.scene.add(foliage);
+        G.resourceMeshes[sn.id] = { trunk: trunk, foliage: foliage, resourceNodeId: sn.id, resourceType: sn.type, gatherToolRequired: tool };
+      } else {
+        var rock = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(1.5, 0),
+          new THREE.MeshLambertMaterial({ color: 0x888888, transparent: true })
+        );
+        rock.position.set(sn.x, 1, sn.z);
+        rock.castShadow = true;
+        rock.resourceNodeId = sn.id;
+        rock.resourceType = sn.type;
+        rock.gatherToolRequired = tool;
+        G.scene.add(rock);
+        G.resourceMeshes[sn.id] = { mesh: rock, resourceNodeId: sn.id, resourceType: sn.type, gatherToolRequired: tool };
+      }
+    }
+    G.resourceMeshesInited = true;
   }
 
   function updateInteractionPrompt() {

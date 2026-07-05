@@ -253,7 +253,7 @@ export const RESOURCE_CONFIG = {
   nodeRegenAmount: 2,    // amount regenerated per regen tick
   nodeRegenInterval: 15000, // ms between node regen ticks
   depositRadius: 12,    // distance to warehouse to deposit
-  gatherRadius: 5,       // distance to node to gather
+  gatherRadius: 6.5,       // distance to node to gather (Phase 9.9A: widened to match visible object size)
   depositReward: 3,      // coins per resource deposited
   initialFactionResources: { wood: 0, stone: 0 }
 };
