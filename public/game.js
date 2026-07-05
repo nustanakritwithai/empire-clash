@@ -93,11 +93,12 @@
   function itemActionHint(item) {
     if (!item) return "เลือกของจาก hotbar";
     if (item.id === "shield") return "คลิก=กระแทก | คลิกขวา/รอง=ยกโล่";
-    if (item.id === "bow") return "คลิก=ยิง | คลิกขวา/รอง=เล็ง";
-    if (item.id === "axe") return "คลิก=ตี | E ใกล้ต้นไม้=เก็บไม้";
-    if (item.id === "pickaxe") return "คลิก=ตี | E ใกล้หิน=เก็บหิน";
-    if (item.id === "wall_blueprint") return "คลิก: วางกำแพง";
-    if (item.id === "rally_blueprint") return "คลิก: วางธงรวมพล";
+    if (item.id === "bow") return "ยิง/คลิก: ยิง | เล็ง: ง้างธนู";
+    if (item.id === "axe") return "ใช้/E: เก็บไม้ | ยิง/คลิก: ตี";
+    if (item.id === "pickaxe") return "ใช้/E: เก็บหิน | ยิง/คลิก: ตี";
+    if (item.id === "wall_blueprint") return "ยิง/คลิก: วางกำแพง";
+    if (item.id === "rally_blueprint") return "ยิง/คลิก: วางธง";
+    if (item.id === "sword" || item.id === "commander_sword") return "ยิง/คลิก: ฟัน";
     return "คลิก=โจมตี";
   }
 
@@ -1150,6 +1151,10 @@
     if (G.playerClass === "archer") payload.drawMs = 400;
     netSend(payload);
 
+    if (item.itemType === "melee" || item.itemType === "tool" || item.itemType === "shield") {
+      showSwordSwingArc(item.id);
+    }
+
     if (w.projectile) {
       var startPos = new THREE.Vector3(G.player.x, G.player.y - 0.1, G.player.z);
       spawnBullet(startPos, camDir, 70);
@@ -1159,6 +1164,25 @@
   }
 
   // ===== MELEE ATTACK =====
+  function showSwordSwingArc(itemId) {
+    if (!G.gunGroup || typeof THREE === "undefined") return;
+    G.meleeAnim = Date.now();
+    var color = (itemId === "sword" || itemId === "commander_sword") ? 0xfff0aa : 0xffcc66;
+    var arc = new THREE.Mesh(
+      new THREE.TorusGeometry(0.42, 0.018, 6, 28, Math.PI * 1.25),
+      new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.72 })
+    );
+    arc.rotation.set(Math.PI / 2, 0, -0.8);
+    arc.position.set(0.15, 0.02, -0.55);
+    G.gunGroup.add(arc);
+    G.gunGroup.rotation.z = -1.05;
+    G.gunGroup.position.z = -0.25;
+    setTimeout(function () {
+      if (arc.parent) arc.parent.remove(arc);
+      if (G.gunGroup) { G.gunGroup.rotation.z = 0; G.gunGroup.position.z = -0.5; }
+    }, 210);
+  }
+
   function melee() {
     classAttack();
   }
@@ -1491,6 +1515,15 @@
         // could draw bullet trail
       } else if (m.kind === "melee") {
         // could show enemy melee swing animation
+      } else if (m.kind === "classAttack") {
+        if (d.from === NET.id) {
+          if (d.damage > 0) { G.hitMarker = Date.now(); toast(d.blocked ? "โล่บล็อก" : "ฟันโดน"); }
+          else toast("ฟันพลาด");
+        }
+      } else if (m.kind === "classAttackReject") {
+        if (d.reason) toast(d.reason);
+      } else if (m.kind === "gatherReject") {
+        if (d.reason) toast(d.reason);
       } else if (m.kind === "capture") {
         var capText = d.name + " ถูกยึดโดย " + (d.owner === "ironhold" ? "Ironhold" : "Verdant");
         addKillFeed(capText);
@@ -1809,35 +1842,20 @@
 
   function tryInteract() {
     if (G.dead) return;
-    // check near resource node
-    if (typeof NET === "undefined" || !NET.resourceNodes) return;
-    var nearNode = null, nearDist = Infinity;
-    for (var i = 0; i < NET.resourceNodes.length; i++) {
-      var node = NET.resourceNodes[i];
-      var dx = node.x - G.player.x, dz = node.z - G.player.z;
-      var d = Math.sqrt(dx * dx + dz * dz);
-      if (d < GATHER_RADIUS && d < nearDist) { nearNode = node; nearDist = d; }
-    }
-    if (nearNode) {
-      if (G.playerClass !== "worker") {
-        toast("ต้องเป็นคนงานเท่านั้น");
-        return;
-      }
-      var item = currentEquippedItem();
-      if (nearNode.type === "wood" && item.id !== "axe") { toast("ต้องถือขวาน"); return; }
-      if (nearNode.type === "stone" && item.id !== "pickaxe") { toast("ต้องถือพลั่วขุดหิน"); return; }
-      netSend({ t: "gather", nodeId: nearNode.id });
+    var info = getInteractionInfo();
+    if (!info.valid) {
+      if (info.reason) toast(info.reason);
       return;
     }
-    // check near own warehouse
-    var wh = NET.warehouses ? NET.warehouses[G.playerFaction] : null;
-    if (wh) {
-      var wdx = wh.x - G.player.x, wdz = wh.z - G.player.z;
-      var wd = Math.sqrt(wdx * wdx + wdz * wdz);
-      if (wd < (wh.radius || DEPOSIT_RADIUS)) {
-        netSend({ t: "deposit" });
-        return;
-      }
+    if (info.node) {
+      netSend({ t: "gather", nodeId: info.node.id });
+      toast(info.label || "เก็บ");
+      return;
+    }
+    if (info.deposit) {
+      netSend({ t: "deposit" });
+      toast("ฝากทรัพยากร");
+      return;
     }
   }
 
@@ -1971,7 +1989,66 @@
   }
 
   // Build placement via equipped blueprint hotbar item
-  // Place at player's current position + small offset in facing direction
+  // Phase 9.9: clamp client request to a valid short distance in front of Commander; server remains final authority.
+  var BUILD_PLACE_DISTANCE = 5.5;
+  var BUILD_PLACE_MAX_DISTANCE = 7.5;
+  function clampBuildPlacement(dir) {
+    var len = Math.sqrt(dir.x * dir.x + dir.z * dir.z) || 1;
+    var nx = dir.x / len, nz = dir.z / len;
+    var dist = Math.min(BUILD_PLACE_DISTANCE, BUILD_PLACE_MAX_DISTANCE);
+    return { x: G.player.x + nx * dist, z: G.player.z + nz * dist, rot: G.yaw || 0, valid: dist <= BUILD_PLACE_MAX_DISTANCE };
+  }
+  function buildPlacementApproxValid(pos, buildingType) {
+    if (!pos) return false;
+    if (Math.abs(pos.x) > 96 || Math.abs(pos.z) > 96) return false;
+    var w = buildingType === "wooden_wall" ? 3.0 : 2.2;
+    var d = buildingType === "wooden_wall" ? 1.4 : 2.2;
+    function nearRect(cx, cz, hw, hd, pad) {
+      return Math.abs(pos.x - cx) < (w / 2 + hw + pad) && Math.abs(pos.z - cz) < (d / 2 + hd + pad);
+    }
+    if (NET && NET.buildings) {
+      for (var i = 0; i < NET.buildings.length; i++) {
+        var b = NET.buildings[i];
+        var bw = b.type === "wooden_wall" ? 3.0 : 2.2;
+        var bd = b.type === "wooden_wall" ? 1.4 : 2.2;
+        if (nearRect(b.x, b.z, bw / 2, bd / 2, 0.65)) return false;
+      }
+    }
+    if (NET && NET.resourceNodes) {
+      for (var r = 0; r < NET.resourceNodes.length; r++) {
+        var n = NET.resourceNodes[r];
+        var ndx = pos.x - n.x, ndz = pos.z - n.z;
+        if (Math.sqrt(ndx * ndx + ndz * ndz) < 4.2) return false;
+      }
+    }
+    if (NET && NET.warehouses) {
+      for (var fk in NET.warehouses) {
+        var wh = NET.warehouses[fk];
+        var wx = pos.x - wh.x, wz = pos.z - wh.z;
+        if (Math.sqrt(wx * wx + wz * wz) < ((wh.radius || 10) + 3)) return false;
+      }
+    }
+    // central fort/capture point exclusion, approximate client-side only
+    var cdx = pos.x, cdz = pos.z;
+    if (Math.sqrt(cdx * cdx + cdz * cdz) < 13) return false;
+    return true;
+  }
+
+  function showBuildPreview(pos, valid) {
+    if (typeof THREE === "undefined" || !G.scene || !pos) return;
+    if (!G.buildPreview) {
+      var geo = new THREE.BoxGeometry(2.8, 0.25, 1.2);
+      var mat = new THREE.MeshBasicMaterial({ color: 0x55ff66, transparent: true, opacity: 0.35 });
+      G.buildPreview = new THREE.Mesh(geo, mat);
+      G.scene.add(G.buildPreview);
+    }
+    G.buildPreview.position.set(pos.x, 0.15, pos.z);
+    G.buildPreview.rotation.y = pos.rot || 0;
+    G.buildPreview.material.color.set(valid ? 0x55ff66 : 0xff4444);
+    G.buildPreview.visible = true;
+    setTimeout(function () { if (G.buildPreview) G.buildPreview.visible = false; }, 450);
+  }
+
   function tryBuild(buildingType) {
     if (G.playerClass !== "commander") {
       toast("ต้องเป็นแม่ทัพเท่านั้น");
@@ -1982,14 +2059,22 @@
       toast("ต้องถือแบบก่อสร้างก่อน");
       return;
     }
-    // place in front of player (3 units in facing direction)
+    // place in front of player using horizontal camera/facing direction, clamped inside server build radius
     var dir = new THREE.Vector3();
     G.camera.getWorldDirection(dir);
     dir.y = 0;
-    dir.normalize();
-    var bx = G.player.x + dir.x * 3;
-    var bz = G.player.z + dir.z * 3;
-    netSend({ t: "build", buildingType: buildingType, x: bx, z: bz, rot: G.yaw || 0 });
+    if (Math.abs(dir.x) + Math.abs(dir.z) < 0.001) {
+      dir.x = -Math.sin(G.yaw || 0);
+      dir.z = -Math.cos(G.yaw || 0);
+    }
+    var pos = clampBuildPlacement(dir);
+    var approxValid = pos.valid && buildPlacementApproxValid(pos, buildingType);
+    showBuildPreview(pos, approxValid);
+    if (!approxValid) {
+      toast("ตำแหน่งวางไม่ได้");
+      return;
+    }
+    netSend({ t: "build", buildingType: buildingType, x: pos.x, z: pos.z, rot: pos.rot });
   }
 
   // Attack nearby enemy building with melee

@@ -307,18 +307,22 @@ export class GameRoom {
     } else if (m.t === "ping") {
       ws.send(encode({ t: "pong" }));
     } else if (m.t === "gather") {
-      // Phase 9.6: Worker gathers with equipped tool
-      if (p.class !== "worker") return; // only Worker can gather
+      // Phase 9.9: Worker gathers with equipped tool, explicit reject reasons for UI.
+      const rejectGather = (reason) => {
+        try { ws.send(encode({ t: "event", kind: "gatherReject", data: { reason } })); } catch {}
+        return;
+      };
+      if (p.class !== "worker") return rejectGather("ต้องเป็นคนงานเท่านั้น");
       const item = getEquippedItem(p);
-      if (!item || item.itemType !== "tool") return;
-      if (now - p.lastGatherTime < RESOURCE_CONFIG.gatherCooldown) return;
+      if (!item || item.itemType !== "tool") return rejectGather("ต้องถือเครื่องมือ");
       const node = this.resourceNodes.find(n => n.id === m.nodeId);
-      if (!node || node.amount <= 0) return;
-      if (item.gatherType !== node.type) return;
+      if (!node || node.amount <= 0) return rejectGather("ทรัพยากรหมด");
+      if (item.gatherType !== node.type) return rejectGather(node.type === "wood" ? "ต้องถือขวาน" : "ต้องถือพลั่ว");
+      if (now - p.lastGatherTime < RESOURCE_CONFIG.gatherCooldown) return rejectGather("ยังไม่พร้อม");
       const dx = p.x - node.x, dz = p.z - node.z;
-      if (dx * dx + dz * dz > RESOURCE_CONFIG.gatherRadius * RESOURCE_CONFIG.gatherRadius) return;
+      if (dx * dx + dz * dz > RESOURCE_CONFIG.gatherRadius * RESOURCE_CONFIG.gatherRadius) return rejectGather("อยู่ไกลเกินไป");
       // check inventory capacity
-      if (p.inventory[node.type] >= RESOURCE_CONFIG.carryCapacity) return;
+      if (p.inventory[node.type] >= RESOURCE_CONFIG.carryCapacity) return rejectGather("กระเป๋าเต็ม");
       // all validation passed
       p.lastGatherTime = now;
       const amount = Math.min(RESOURCE_CONFIG.gatherAmount, node.amount, RESOURCE_CONFIG.carryCapacity - p.inventory[node.type]);
@@ -457,12 +461,16 @@ export class GameRoom {
   }
 
   handleClassAttack(ws, p, m, now = Date.now()) {
+    const rejectAttack = (reason) => {
+      try { ws.send(encode({ t: "event", kind: "classAttackReject", data: { reason } })); } catch {}
+      return;
+    };
     const item = getEquippedItem(p);
     const def = combatDefForItem(item, p);
-    if (!def || item?.itemType === "blueprint") return;
-    if (p.dead) return;
-    if (now - (p.lastClassAttackTime || 0) < def.cooldown) return;
-    if ((p.stamina || 0) < def.staminaCost) return;
+    if (!def || item?.itemType === "blueprint") return rejectAttack("ถืออาวุธก่อน");
+    if (p.dead) return rejectAttack("ตายอยู่");
+    if (now - (p.lastClassAttackTime || 0) < def.cooldown) return rejectAttack("ยังไม่พร้อม");
+    if ((p.stamina || 0) < def.staminaCost) return rejectAttack("แรงไม่พอ");
 
     const dirX = Number.isFinite(+m.dx) ? +m.dx : yawForward(p.ry).x;
     const dirZ = Number.isFinite(+m.dz) ? +m.dz : yawForward(p.ry).z;
@@ -476,12 +484,12 @@ export class GameRoom {
     // Building target path — enemies only, class weapon building damage.
     if (m.buildingId !== undefined && m.buildingId !== null) {
       const bld = this.buildings.find(b => b.id === +m.buildingId);
-      if (!bld || bld.faction === p.faction) return;
+      if (!bld || bld.faction === p.faction) return rejectAttack("เป้าหมายไม่ถูกต้อง");
       const bx = bld.x - p.x;
       const bz = bld.z - p.z;
       const dist = len2(bx, bz);
-      if (dist > def.range) return;
-      if (dist >= 0.5 && dot2(nx, nz, bx / dist, bz / dist) < def.coneCos) return;
+      if (dist > def.range) return rejectAttack("อยู่ไกลเกินไป");
+      if (dist >= 0.5 && dot2(nx, nz, bx / dist, bz / dist) < def.coneCos) return rejectAttack("ไม่ได้หันหาเป้าหมาย");
       p.lastClassAttackTime = now;
       p.stamina = clamp(p.stamina - def.staminaCost, 0, p.maxStamina || STAMINA_CONFIG.max);
       bld.hp -= def.buildingDamage || Math.ceil(def.damage / 2);
@@ -495,18 +503,19 @@ export class GameRoom {
     }
 
     const tgt = this.players.get(m.id);
-    if (!tgt || tgt.dead || tgt.ws.id === ws.id) return;
-    if (tgt.faction === p.faction) return; // friendly fire remains blocked
+    if (!tgt || tgt.dead || tgt.ws.id === ws.id) return rejectAttack("ไม่พบเป้าหมาย");
+    if (tgt.faction === p.faction) return rejectAttack("ห้ามตีพวกเดียวกัน"); // friendly fire remains blocked
     const tx = tgt.x - p.x;
     const tz = tgt.z - p.z;
     const dist = len2(tx, tz);
-    if (dist > def.range) return;
-    if (dot2(nx, nz, tx / dist, tz / dist) < def.coneCos) return;
+    if (dist > def.range) return rejectAttack("อยู่ไกลเกินไป");
+    if (dot2(nx, nz, tx / dist, tz / dist) < def.coneCos) return rejectAttack("ฟันพลาด");
 
     p.lastClassAttackTime = now;
     p.stamina = clamp(p.stamina - def.staminaCost, 0, p.maxStamina || STAMINA_CONFIG.max);
+    const blocked = isFrontalBlock(tgt, p);
     const damageDone = applyClassDamage(tgt, p, def.damage);
-    this.broadcast({ t: "event", kind: "classAttack", data: { from: ws.id, target: tgt.ws.id, weapon: def.id, damage: damageDone } });
+    this.broadcast({ t: "event", kind: "classAttack", data: { from: ws.id, target: tgt.ws.id, weapon: def.id, damage: damageDone, blocked } });
     if (tgt.hp <= 0) {
       tgt.dead = true;
       tgt.blocking = false;

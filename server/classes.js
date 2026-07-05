@@ -83,6 +83,8 @@ export const CLASS_WEAPONS = {
     cooldown: 650,
     staminaCost: 18,
     coneCos: 0.45,
+    windupMs: 120,
+    activeMs: 160,
     buildingDamage: 18,
     canBlock: true,
     blockReduction: 0.65,
@@ -122,6 +124,8 @@ export const CLASS_WEAPONS = {
     cooldown: 750,
     staminaCost: 16,
     coneCos: 0.4,
+    windupMs: 140,
+    activeMs: 150,
     buildingDamage: 14,
     canBlock: false
   }
