@@ -51,6 +51,7 @@ Polish only the usability of the Phase 9.6 equipment/hotbar flow. Server authori
 
 - Lower-left dynamic joystick: start dragging anywhere in the movement zone.
 - Push the joystick strongly forward/up: sprint automatically; no separate sprint button.
+- Upper-left `ยิง`: secondary fire button using the same primary action, placed below the status HUD.
 - Lower-right `ยิง`: primary action of equipped item.
 - Lower-right `เล็ง`: secondary action of equipped item.
 - Lower-right `โดด`: explicit jump.

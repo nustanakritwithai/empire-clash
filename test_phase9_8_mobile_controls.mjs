@@ -17,7 +17,7 @@ check('joystick origin follows touchstart', has('G.touch.joyOriginX = t.clientX'
 check('joystick resets neutral on touchend', has('resetJoystick()') && has('G.touch.joyX = 0') && has('G.touch.sprinting = false'));
 check('joystick sprint threshold only strong forward/up', has('G.touch.sprinting = G.touch.joyY < -0.78'));
 check('legacy sprint button removed', !has('touchSprint') && !has('sprintBtn'));
-check('fire button exists and uses primary shoot()', has('touchFire') && has('useMobilePrimary') && has('shoot();'));
+check('fire buttons exist and use primary shoot()', has('touchFire') && has('touchFireTop') && has('useMobilePrimary') && has('shoot();'));
 check('aim button exists and routes secondary', has('touchAim') && has('mobileSecondary') && has('secondaryAction === "aim"'));
 check('jump button exists and triggers jump logic', has('touchJump') && has('G.touch.jumpTriggered = true'));
 check('crouch button exists and toggles crouch/prone', has('touchCrouch') && has('crouchState') && has('G.touch.crouching = crouchState === 1') && has('G.touch.prone = crouchState === 2'));
@@ -43,6 +43,8 @@ const boxes = [
   box('prompt',(W-260)/2,H-248-26,260,26),
   box('resourceHud',10,H-330-44,120,44),
   box('actionDisplay',W-14-140,H-330-62,140,62),
+  box('hudLeft',12,8,180,50),
+  box('fireTop',14,86,58,58),
   box('fire',W-14-58,H-86-58,58,58),
   box('aim',W-82-58,H-86-58,58,58),
   box('jump',W-14-58,H-18-58,58,58),
@@ -50,7 +52,7 @@ const boxes = [
   box('crouch',W-14-66,136,66,44),
   box('minimap',W-130,10,120,120),
   box('captureHud',(W-260)/2,200,260,40),
-  box('scoreHud',120,10,130,40)
+  box('scoreHud',120,62,130,40)
 ];
 const blocking = boxes.filter(b => b.name !== 'moveZone');
 let overlaps = [];

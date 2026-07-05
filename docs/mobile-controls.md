@@ -24,6 +24,7 @@ Preserved systems:
 ## Final mobile layout
 
 - Lower-left: dynamic floating movement joystick.
+- Upper-left: second Fire/ยิง button under the status HUD for an alternate left-thumb attack input.
 - Bottom-center: equipment hotbar.
 - Lower-right: Fire / Aim / Jump / Action cluster.
 - Upper-right: Crouch button, placed below the minimap and away from capture/score HUD.
@@ -50,7 +51,8 @@ Sprint is automatic:
 
 ## Lower-right action cluster
 
-- `ยิง`: uses the equipped item primary action.
+- Lower-right `ยิง`: uses the equipped item primary action.
+- Upper-left `ยิง`: second fire button for the same primary action.
   - Sword/tool: melee attack.
   - Bow: shot.
   - Blueprint: placement/confirm through the same primary flow.

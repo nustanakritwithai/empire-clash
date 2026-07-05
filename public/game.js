@@ -626,6 +626,7 @@
     }
 
     var fireBtn = makeBtn("touchFire", "ยิง", "right:14px;bottom:86px;width:58px;height:58px;border-radius:50%;background:rgba(196,69,47,0.74);border:2px solid rgba(255,255,255,0.38);font-size:14px");
+    var fireTopBtn = makeBtn("touchFireTop", "ยิง", "left:14px;top:86px;width:58px;height:58px;border-radius:50%;background:rgba(196,69,47,0.66);border:2px solid rgba(255,255,255,0.34);font-size:14px");
     var aimBtn = makeBtn("touchAim", "เล็ง", "right:82px;bottom:86px;width:58px;height:58px;border-radius:50%;background:rgba(74,125,168,0.62);border:2px solid rgba(255,255,255,0.30);font-size:13px");
     var jumpBtn = makeBtn("touchJump", "โดด", "right:14px;bottom:18px;width:58px;height:58px;border-radius:50%;background:rgba(74,157,74,0.66);border:2px solid rgba(255,255,255,0.32);font-size:13px");
     var actionBtn = makeBtn("touchAction", "ใช้", "right:82px;bottom:18px;width:58px;height:58px;border-radius:50%;background:rgba(224,162,60,0.38);border:2px solid rgba(255,210,122,0.25);font-size:13px;opacity:.55");
@@ -699,11 +700,13 @@
     }, { passive: false });
     moveZone.addEventListener("touchcancel", function (e) { resetJoystick(); }, { passive: false });
 
-    function useMobilePrimary() {
+    function useMobilePrimary(activeBtn) {
       G.touch.shooting = true;
       shoot();
-      setBtnActive(fireBtn, true, "rgba(196,69,47,0.74)", "rgba(196,69,47,0.95)");
-      setTimeout(function () { setBtnActive(fireBtn, false, "rgba(196,69,47,0.74)", "rgba(196,69,47,0.95)"); }, 110);
+      var btn = activeBtn || fireBtn;
+      var normal = btn === fireTopBtn ? "rgba(196,69,47,0.66)" : "rgba(196,69,47,0.74)";
+      setBtnActive(btn, true, normal, "rgba(196,69,47,0.95)");
+      setTimeout(function () { setBtnActive(btn, false, normal, "rgba(196,69,47,0.95)"); }, 110);
     }
 
     function mobileSecondary(hold) {
@@ -724,8 +727,10 @@
       }
     }
 
-    fireBtn.addEventListener("touchstart", function (e) { if (layoutMode) return; e.preventDefault(); useMobilePrimary(); }, { passive: false });
+    fireBtn.addEventListener("touchstart", function (e) { if (layoutMode) return; e.preventDefault(); useMobilePrimary(fireBtn); }, { passive: false });
     fireBtn.addEventListener("touchend", function (e) { e.preventDefault(); G.touch.shooting = false; }, { passive: false });
+    fireTopBtn.addEventListener("touchstart", function (e) { if (layoutMode) return; e.preventDefault(); useMobilePrimary(fireTopBtn); }, { passive: false });
+    fireTopBtn.addEventListener("touchend", function (e) { e.preventDefault(); G.touch.shooting = false; }, { passive: false });
 
     aimBtn.addEventListener("touchstart", function (e) { if (layoutMode) return; e.preventDefault(); mobileSecondary(true); }, { passive: false });
     aimBtn.addEventListener("touchend", function (e) { if (layoutMode) return; e.preventDefault(); mobileSecondary(false); }, { passive: false });
@@ -809,7 +814,7 @@
     var ch = document.getElementById("crosshair");
     if (ch) ch.style.display = "block";
     var ctrl = document.getElementById("controls");
-    if (ctrl) ctrl.textContent = "ซ้ายล่าง: จอยลอย | ดันขึ้นแรง=วิ่ง | ขวาล่าง: ยิง/เล็ง/โดด/ใช้ | ขวาบน: ย่อ/หมอบ | Hotbar: เปลี่ยนของ";
+    if (ctrl) ctrl.textContent = "ซ้ายล่าง: จอยลอย | ซ้ายบน: ยิงสำรอง | ดันขึ้นแรง=วิ่ง | ขวาล่าง: ยิง/เล็ง/โดด/ใช้ | ขวาบน: ย่อ/หมอบ | Hotbar: เปลี่ยนของ";
   }
 
   // ===== LAYOUT EDIT MODE =====
