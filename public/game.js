@@ -1661,7 +1661,7 @@
     drawMinimap();
     updateCaptureFlags();
     updateScoreHud();
-    updateResourceMeshes();
+    try { updateResourceMeshes(); } catch (e) { /* guard: prevent render loop crash */ }
     updateInteractionPrompt();
     updateMobileActionButton();
     updateResourceHud();
